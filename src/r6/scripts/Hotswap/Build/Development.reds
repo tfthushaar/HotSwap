@@ -8,42 +8,41 @@
 // repeat until nothing is left to do. Whatever is blocked this pass is free the next, and a pass that
 // moves nothing means the rest will never move.
 
+enum HotswapDevelopmentResult {
+  Done = 0,
+  Blocked = 1,    // the game won't sell a perk while cyberware depends on it
+  Stuck = 2,
+}
+
 public abstract class HotswapDevelopment {
 
-  // The game refuses a sale while cyberware depends on what the perk gives (CanSellNewPerk), so this
-  // has to pass before anything is sold.
-  public static func IsBlocked(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> Bool {
-    for want in plan.perks {
-      if ctx.dev.IsNewPerkBought(want.perk) > want.level {
-        let result = PlayerDevelopmentSystem.CanSellNewPerk(ctx.player, want.perk);
-        if !result.success {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  public static func Run(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, out problems: array<String>) -> Bool {
-    if !HotswapDevelopment.Sell(ctx, plan) {
-      ArrayPush(problems, HotswapText.PerksStuck());
-      return false;
+  public static func Run(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, out problems: array<String>) -> HotswapDevelopmentResult {
+    let sold = HotswapDevelopment.Sell(ctx, plan);
+    if NotEquals(sold, HotswapDevelopmentResult.Done) {
+      return sold;
     }
     if !HotswapDevelopment.SetAttributes(ctx, plan) {
-      return false;
+      return HotswapDevelopmentResult.Stuck;
     }
     HotswapDevelopment.Relock(ctx);
     HotswapDevelopment.Buy(ctx, plan, problems);
-    return true;
+    return HotswapDevelopmentResult.Done;
   }
 
-  private static func Sell(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> Bool {
+  // CanSellNewPerk is asked before every sale, not once at the start. It compares the capacity free
+  // now with what one perk gives, so two capacity perks can each pass on their own and still leave V
+  // over the limit between them. The game only stays safe because a player sells them one at a time.
+  private static func Sell(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> HotswapDevelopmentResult {
     let passes = 0;
     while passes < 64 {
       let left = false;
       let moved = false;
       for want in plan.perks {
         while ctx.dev.IsNewPerkBought(want.perk) > want.level {
+          let allowed = PlayerDevelopmentSystem.CanSellNewPerk(ctx.player, want.perk);
+          if !allowed.success {
+            return HotswapDevelopmentResult.Blocked;
+          }
           let sold: Int32;
           if !ctx.dev.SellNewPerk(want.perk, sold) {
             left = true;
@@ -54,14 +53,14 @@ public abstract class HotswapDevelopment {
         }
       }
       if !left {
-        return true;
+        return HotswapDevelopmentResult.Done;
       }
       if !moved {
-        return false;
+        return HotswapDevelopmentResult.Stuck;
       }
       passes += 1;
     }
-    return false;
+    return HotswapDevelopmentResult.Stuck;
   }
 
   // The refund in ResetAttribute is paid whether or not the attribute really dropped, so each one is

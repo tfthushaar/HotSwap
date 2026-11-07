@@ -70,35 +70,35 @@ public class HotswapArchetype {
       case 0:
         self = HotswapArchetype.Make(id, "Netrunner", "N", "Quickhacks and smart guns, with Intelligence first.");
         self.attributes = [gamedataStatType.Intelligence, gamedataStatType.TechnicalAbility, gamedataStatType.Cool];
-        self.branches = ["Intelligence_Central", "Intelligence_Left", "Intelligence_Right", "Intelligence_Inbetween", "Intelligence_Master", "Tech_Central", "Cool_Central", "Espionage_Central"];
+        self.branches = ["Intelligence_Central", "Intelligence_Left", "Intelligence_Right", "Intelligence_Inbetween", "Intelligence_Master", "Tech_Central", "Cool_Central", "Espionage_Central", "Espionage_Right", "Espionage_Left"];
         self.systems = [n"Cyberdeck"];
         self.arms = [n"NanoWires"];
         break;
       case 1:
         self = HotswapArchetype.Make(id, "Blade Dancer", "B", "Fast melee, built around a Sandevistan and Reflexes.");
         self.attributes = [gamedataStatType.Reflexes, gamedataStatType.Cool, gamedataStatType.TechnicalAbility];
-        self.branches = ["Reflexes_Central", "Reflexes_Right", "Reflexes_Inbetween_Right", "Reflexes_Master", "Cool_Central", "Tech_Central", "Espionage_Central"];
+        self.branches = ["Reflexes_Central", "Reflexes_Right", "Reflexes_Inbetween_Right", "Reflexes_Master", "Cool_Central", "Tech_Central", "Espionage_Central", "Espionage_Right", "Espionage_Left"];
         self.systems = [n"Sandevistan"];
         self.arms = [n"MantisBlades", n"NanoWires"];
         break;
       case 2:
         self = HotswapArchetype.Make(id, "Juggernaut", "J", "Walks through gunfire. Body first, with heavy guns and hard hits.");
         self.attributes = [gamedataStatType.Strength, gamedataStatType.TechnicalAbility, gamedataStatType.Reflexes];
-        self.branches = ["Body_Central", "Body_Left", "Body_Right", "Body_Inbetween", "Body_Master", "Tech_Central", "Espionage_Central"];
+        self.branches = ["Body_Central", "Body_Left", "Body_Right", "Body_Inbetween", "Body_Master", "Tech_Central", "Espionage_Central", "Espionage_Right", "Espionage_Left"];
         self.systems = [n"Berserk"];
         self.arms = [n"StrongArms"];
         break;
       case 3:
         self = HotswapArchetype.Make(id, "Ghost", "G", "Unseen and precise. Cool first, one shot at a time.");
         self.attributes = [gamedataStatType.Cool, gamedataStatType.Intelligence, gamedataStatType.Reflexes];
-        self.branches = ["Cool_Right", "Cool_Left", "Cool_Central", "Cool_Inbetween", "Cool_Master", "Intelligence_Left", "Reflexes_Central", "Espionage_Left"];
+        self.branches = ["Cool_Right", "Cool_Left", "Cool_Central", "Cool_Inbetween", "Cool_Master", "Intelligence_Left", "Reflexes_Central", "Espionage_Left", "Espionage_Right", "Espionage_Central"];
         self.systems = [n"Sandevistan", n"Cyberdeck"];
         self.arms = [n"NanoWires", n"MantisBlades"];
         break;
       default:
         self = HotswapArchetype.Make(id, "Techie", "T", "Charged guns and explosives, with Technical Ability first.");
         self.attributes = [gamedataStatType.TechnicalAbility, gamedataStatType.Reflexes, gamedataStatType.Cool];
-        self.branches = ["Tech_Left", "Tech_Right", "Tech_Central", "Tech_Inbetween", "Tech_Master", "Reflexes_Left", "Reflexes_Master", "Espionage_Central"];
+        self.branches = ["Tech_Left", "Tech_Right", "Tech_Central", "Tech_Inbetween", "Tech_Master", "Reflexes_Left", "Reflexes_Master", "Espionage_Central", "Espionage_Right", "Espionage_Left"];
         self.systems = [n"Sandevistan", n"Berserk", n"Cyberdeck"];
         self.arms = [n"ProjectileLauncher"];
         break;

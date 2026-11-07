@@ -58,9 +58,19 @@ public class HotswapStock {
   public let cyberware: array<wref<gameItemData>>;
   public let weapons: array<wref<gameItemData>>;
   public let programs: array<ItemID>;
+  public let perkNames: array<String>;
+  public let perkTiers: array<Int32>;
 
   public static func Of(ctx: ref<HotswapContext>) -> ref<HotswapStock> {
     let self = new HotswapStock();
+    let index = 0;
+    let perks = HotswapNames.PerkCount();
+    while index < perks {
+      let perk = HotswapNames.PerkAt(index);
+      ArrayPush(self.perkNames, NameToString(HotswapNames.OfPerk(perk)));
+      ArrayPush(self.perkTiers, HotswapRecommender.TierOf(perk));
+      index += 1;
+    }
     let bag = HotswapBag.Of(ctx);
     for data in bag.items {
       if IsDefined(data) {
@@ -164,7 +174,9 @@ public class HotswapRecommender {
     return index >= 0 ? this.m_attributes[index] : 0;
   }
 
-  // Raise each to a tier in turn, so a low-level V gets a usable spread and not one maxed attribute.
+  // The main attribute reaches 20 well before the others, because a build's best perks are at 20.
+  // Spreading points evenly stalls everything at 15 or so, with no master perks at all and perk
+  // points left over. A low-level V still gets the second attribute to 9 early, for its first perks.
   private func SpendAttributes() -> Void {
     let stats = HotswapNames.Attributes();
     ArrayResize(this.m_attributes, ArraySize(stats));
@@ -174,10 +186,12 @@ public class HotswapRecommender {
       i += 1;
     }
     let points = HotswapTotals.Read(this.m_ctx).attribute;
-    for tier in [9, 15, 20] {
-      for stat in this.m_type.attributes {
-        points = this.Raise(stat, tier, points);
-      }
+    let order = [0, 1, 0, 0, 1, 2, 1, 2, 2];
+    let tiers = [9, 9, 15, 20, 15, 9, 20, 15, 20];
+    i = 0;
+    while i < ArraySize(order) {
+      points = this.Raise(this.m_type.attributes[order[i]], tiers[i], points);
+      i += 1;
     }
     // Whatever is left goes wherever there is still room.
     for stat in stats {
@@ -230,14 +244,30 @@ public class HotswapRecommender {
     this.m_primaryLeft = totals.primary;
     this.m_relicLeft = totals.relic;
 
-    // Cheap tiers first across every branch, so points reach more of the tree before going deep.
-    for tier in [0, 4, 9, 15, 20] {
-      for branch in this.m_type.branches {
+    // Each branch is finished before the next starts, because the archetype lists them best first.
+    // Going tier by tier across all of them instead spends the points on cheap perks in side trees,
+    // and the main tree's master perks are never reached.
+    for branch in this.m_type.branches {
+      for tier in [0, 4, 9, 15, 20] {
         let i = 0;
         while i < count {
-          let perk = HotswapNames.PerkAt(i);
-          if this.InBranch(perk, branch) && this.TierOf(perk) == tier {
-            this.Take(perk, 0);
+          if this.m_stock.perkTiers[i] == tier && StrBeginsWith(this.m_stock.perkNames[i], branch) {
+            this.Take(HotswapNames.PerkAt(i), 0);
+          }
+          i += 1;
+        }
+      }
+    }
+
+    // Points still left go to the rest of the trees this build's attributes reach, rather than
+    // sitting unspent.
+    for stat in this.m_type.attributes {
+      let tree = HotswapRecommender.TreePrefix(stat);
+      for tier in [4, 9, 15, 20] {
+        let i = 0;
+        while i < count {
+          if this.m_stock.perkTiers[i] == tier && StrBeginsWith(this.m_stock.perkNames[i], tree) {
+            this.Take(HotswapNames.PerkAt(i), 0);
           }
           i += 1;
         }
@@ -257,11 +287,22 @@ public class HotswapRecommender {
     }
   }
 
-  private func InBranch(perk: gamedataNewPerkType, branch: String) -> Bool {
-    return StrBeginsWith(NameToString(HotswapNames.OfPerk(perk)), branch);
+  private static func TreePrefix(stat: gamedataStatType) -> String {
+    switch stat {
+      case gamedataStatType.Strength:
+        return "Body_";
+      case gamedataStatType.Reflexes:
+        return "Reflexes_";
+      case gamedataStatType.TechnicalAbility:
+        return "Tech_";
+      case gamedataStatType.Intelligence:
+        return "Intelligence_";
+      default:
+        return "Cool_";
+    }
   }
 
-  private func TierOf(perk: gamedataNewPerkType) -> Int32 {
+  public static func TierOf(perk: gamedataNewPerkType) -> Int32 {
     let record = RPGManager.GetNewPerkRecord(perk);
     if !IsDefined(record) || !IsDefined(record.Tier()) {
       return -1;

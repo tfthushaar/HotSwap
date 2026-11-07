@@ -38,6 +38,7 @@ public class HotswapRow {
   private let m_mode: HotswapRowMode;
   private let m_target: Int32;
   private let m_hovered: Int32;
+  private let m_hoverTarget: wref<inkWidget>;
   private let m_drafts: array<ref<HotswapDraft>>;
   private let m_token: ref<inkGameNotificationToken>;
   private let m_popup: HotswapPopup;
@@ -90,7 +91,11 @@ public class HotswapRow {
       this.Refresh();
     } else {
       this.m_mode = HotswapRowMode.Builds;
-      this.ClearHover();
+      // The hints and tooltip share their names with the inventory's own, so this is only safe to
+      // clear when they are ours. This runs on every change of category.
+      if this.m_hovered >= 0 {
+        this.ClearHover();
+      }
     }
   }
 
@@ -147,8 +152,19 @@ public class HotswapRow {
 
   public func OnSlotHover(index: Int32, target: wref<inkWidget>) -> Void {
     this.m_hovered = index;
+    this.m_hoverTarget = target;
     this.ShowTooltip(index, target);
     this.ShowHints(index);
+  }
+
+  // The cursor can stay on a slot while what the slot means changes under it, and the game sends no
+  // new hover event for that.
+  private func RefreshHover() -> Void {
+    if this.m_hovered >= 0 && IsDefined(this.m_hoverTarget) {
+      this.m_tooltips.HideTooltips();
+      this.ShowTooltip(this.m_hovered, this.m_hoverTarget);
+      this.ShowHints(this.m_hovered);
+    }
   }
 
   public func OnSlotHoverOut() -> Void {
@@ -230,6 +246,11 @@ public class HotswapRow {
   public func OnSlotAction(index: Int32, evt: ref<inkPointerEvent>) -> Void {
     let sys = this.System();
     if !IsDefined(sys) || sys.IsBusy() || IsDefined(this.m_token) {
+      return;
+    }
+    // Hotswap is about V. Saving during a Johnny segment would save Johnny's gear.
+    if this.m_player.IsReplacer() || this.m_player.IsJohnnyReplacer() {
+      this.Tell(HotswapText.RowLabel(), HotswapText.NotAsJohnny());
       return;
     }
     let primary = evt.IsAction(n"click") || evt.IsAction(n"tap");
@@ -333,14 +354,14 @@ public class HotswapRow {
     this.m_target = index;
     this.m_mode = HotswapRowMode.Recommend;
     this.Refresh();
-    this.ShowHints(index);
+    this.RefreshHover();
   }
 
   private func LeaveRecommend() -> Void {
     this.m_mode = HotswapRowMode.Builds;
     ArrayClear(this.m_drafts);
     this.Refresh();
-    this.ClearHover();
+    this.RefreshHover();
   }
 
   private func Create(index: Int32) -> Void {
@@ -440,6 +461,7 @@ public class HotswapRow {
         break;
     }
     this.Refresh();
+    this.RefreshHover();
     return true;
   }
 

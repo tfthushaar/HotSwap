@@ -60,6 +60,9 @@ while a swap runs.
 
 Builds belong to the save they were made in. Uninstalling leaves V in whatever build they have on.
 
+If a swap goes wrong, Hotswap writes what happened to `bin/x64/plugins/cyber_engine_tweaks/gamelog.log`,
+in lines starting `[Hotswap]`. That file is what to send with a bug report.
+
 ## Settings
 
 In Mod Settings: allow gear-only swaps in combat, seconds between swaps, and eddies per swap. All are

@@ -286,18 +286,17 @@ public class HotswapApply {
 
   // ---- Perks and attributes --------------------------------------------------------------------
 
+  // A sale the game refuses can leave perks half sold. That is safe, because the next pass compares
+  // the build with V's live levels and carries on from there.
   private func RunDevelopment() -> Void {
-    if HotswapDevelopment.IsBlocked(this.m_ctx, this.m_plan) {
-      if this.m_stripped {
-        this.Fail(HotswapText.PerksStuck());
-      } else {
-        this.m_stripped = true;
-        this.StripEverything();
-        this.Enter(HotswapStage.WaitCyberOff);
-      }
+    let result = HotswapDevelopment.Run(this.m_ctx, this.m_plan, this.m_problems);
+    if Equals(result, HotswapDevelopmentResult.Blocked) && !this.m_stripped {
+      this.m_stripped = true;
+      this.StripEverything();
+      this.Enter(HotswapStage.WaitCyberOff);
       return;
     }
-    if !HotswapDevelopment.Run(this.m_ctx, this.m_plan, this.m_problems) {
+    if NotEquals(result, HotswapDevelopmentResult.Done) {
       this.Fail(HotswapText.PerksStuck());
       return;
     }
