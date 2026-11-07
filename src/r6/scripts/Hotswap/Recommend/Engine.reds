@@ -17,6 +17,7 @@ public class HotswapDraft {
   public let blocker: String;   // why this build can't work at all. Empty for nearly every build
   public let rows: array<ref<HotswapEntry>>;
   public let uses: array<String>;
+  public let chrome: array<String>;   // the cyberware the build leans on most, best first
   public let notes: array<String>;
   public let attributes: String;
   public let perkPoints: Int32;
@@ -50,6 +51,9 @@ public class HotswapDraft {
     if ArraySize(this.uses) > 0 {
       text += "\nUses: " + HotswapText.Join(this.uses);
     }
+    if ArraySize(this.chrome) > 0 {
+      text += "\nKey cyberware: " + HotswapText.Join(this.chrome);
+    }
     text += "\nAttributes: " + this.attributes;
     text += "\nPerks: " + IntToString(this.perkPoints) + " points";
     text += "\nCapacity: " + IntToString(RoundF(this.capacityUsed)) + " / " + IntToString(RoundF(this.capacityTotal));
@@ -72,6 +76,7 @@ public class HotswapStock {
   public let maxDps: Float;
   public let programs: array<ItemID>;
   public let perkNames: array<String>;
+  public let knowledge: ref<HotswapKnowledge>;
   public let perkTiers: array<Int32>;
 
   public static func Of(ctx: ref<HotswapContext>) -> ref<HotswapStock> {
@@ -109,6 +114,7 @@ public class HotswapStock {
     for data in self.weapons {
       self.maxDps = MaxF(self.maxDps, data.GetStatValueByType(gamedataStatType.EffectiveDPS));
     }
+    self.knowledge = HotswapKnowledge.Load();
     // Quickhacks on the current deck count as owned, though they aren't in the inventory.
     let deck = ctx.equip.GetActiveItem(gamedataEquipmentArea.SystemReplacementCW);
     if ItemID.IsValid(deck) {
@@ -169,6 +175,8 @@ public class HotswapRecommender {
   private let m_stock: ref<HotswapStock>;
   private let m_bag: ref<HotswapBag>;
   private let m_kit: ref<HotswapKit>;
+  private let m_interest: array<Float>;       // how much this build wants each HotswapStyle
+  private let m_cyberScores: array<Float>;    // the worth of each of the stock's cyberware, for this build
   private let m_demand: array<Float>;         // how much V's gear leans on each attribute
   private let m_needs: array<Int32>;          // what that gear requires of each attribute
   private let m_order: array<gamedataStatType>;   // the attributes, in the order this draft favours them
@@ -218,6 +226,7 @@ public class HotswapRecommender {
     this.m_draft = draft;
 
     this.Survey();
+    this.Interests();
     this.OrderAttributes();
     this.SpendAttributes();
     this.SpendPerks();
@@ -830,13 +839,96 @@ public class HotswapRecommender {
     return !RPGManager.IsItemBroken(data);
   }
 
+  // What a piece does for this build counts most: its power and the styles it serves (HotswapKnowledge).
+  // Grade comes next, so of two copies the better one wins, but a lower grade piece that suits the
+  // build beats a perfect one that doesn't. Attunement to the build's attributes settles the rest.
   private func Score(item: ItemID, data: wref<gameItemData>) -> Float {
-    let score = HotswapRecommender.Rank(data) * 10.0;
+    let score = this.m_stock.knowledge.Worth(this.Type(item), this.m_interest);
+    score += HotswapRecommender.Rank(data) * 3.0;
     let rank = this.OrderRank(this.Attunement(item));
     if rank >= 0 {
-      score += Cast<Float>(15 - rank * 5);
+      score += Cast<Float>(6 - rank * 2);
+    }
+    // Decks differ most in their RAM.
+    if EquipmentSystem.IsItemCyberdeck(item) {
+      score += data.GetStatValueByType(gamedataStatType.Memory);
     }
     return score;
+  }
+
+  // ---- What this build wants ----------------------------------------------------------------------
+
+  // Each kind of build starts with interests of its own, and V's kit adds to them: a Juggernaut with
+  // a hammer leans on blunt melee, one with a shotgun on guns, a Ghost with a silenced pistol on stealth.
+  private func Interests() -> Void {
+    ArrayResize(this.m_interest, HotswapStyleCount());
+    let i = 0;
+    while i < HotswapStyleCount() {
+      this.m_interest[i] = 0.0;
+      i += 1;
+    }
+    switch this.m_type.id {
+      case 0:
+        this.Want(HotswapStyle.Netrun, 3.0);
+        this.Want(HotswapStyle.Smart, 1.0);
+        this.Want(HotswapStyle.Stealth, 1.0);
+        this.Want(HotswapStyle.Sustain, 1.0);
+        this.Want(HotswapStyle.Ranged, 0.5);
+        this.Want(HotswapStyle.Tank, 0.5);
+        this.Want(HotswapStyle.Abilities, 0.5);
+        break;
+      case 1:
+        this.Want(HotswapStyle.Melee, 3.0);
+        this.Want(HotswapStyle.Blades, 3.0);
+        this.Want(HotswapStyle.Mobility, 2.0);
+        this.Want(HotswapStyle.Abilities, 1.5);
+        this.Want(HotswapStyle.Sustain, 1.0);
+        this.Want(HotswapStyle.Tank, 1.0);
+        this.Want(HotswapStyle.Precision, 0.5);
+        break;
+      case 2:
+        this.Want(HotswapStyle.Tank, 3.0);
+        this.Want(HotswapStyle.Sustain, 2.0);
+        this.Want(HotswapStyle.Melee, 1.5);
+        this.Want(HotswapStyle.Blunt, 1.0);
+        this.Want(HotswapStyle.Ranged, 1.0);
+        this.Want(HotswapStyle.Abilities, 1.0);
+        break;
+      case 3:
+        this.Want(HotswapStyle.Stealth, 3.0);
+        this.Want(HotswapStyle.Precision, 3.0);
+        this.Want(HotswapStyle.Throwing, 1.0);
+        this.Want(HotswapStyle.Ranged, 1.0);
+        this.Want(HotswapStyle.Abilities, 1.0);
+        this.Want(HotswapStyle.Sustain, 1.0);
+        this.Want(HotswapStyle.Mobility, 1.0);
+        break;
+      default:
+        this.Want(HotswapStyle.Tech, 3.0);
+        this.Want(HotswapStyle.Ranged, 2.0);
+        this.Want(HotswapStyle.Abilities, 1.0);
+        this.Want(HotswapStyle.Sustain, 1.0);
+        this.Want(HotswapStyle.Tank, 1.0);
+        break;
+    }
+    let kit = this.m_kit;
+    if kit.blades { this.Want(HotswapStyle.Blades, 2.0); this.Want(HotswapStyle.Melee, 1.0); }
+    if kit.blunt { this.Want(HotswapStyle.Blunt, 2.0); this.Want(HotswapStyle.Melee, 1.0); }
+    if kit.heavy { this.Want(HotswapStyle.Ranged, 1.0); this.Want(HotswapStyle.Tank, 0.5); }
+    if kit.automatic { this.Want(HotswapStyle.Ranged, 1.0); }
+    if kit.precise { this.Want(HotswapStyle.Precision, 1.5); this.Want(HotswapStyle.Ranged, 0.5); }
+    if kit.thrown { this.Want(HotswapStyle.Throwing, 2.0); }
+    if kit.smart { this.Want(HotswapStyle.Smart, 2.0); }
+    if kit.charged { this.Want(HotswapStyle.Tech, 2.0); }
+    if kit.deck { this.Want(HotswapStyle.Netrun, 1.0); }
+    if kit.wires { this.Want(HotswapStyle.Netrun, 0.5); this.Want(HotswapStyle.Melee, 0.5); }
+    if kit.launcher { this.Want(HotswapStyle.Tech, 1.0); }
+    if kit.camo || kit.silent { this.Want(HotswapStyle.Stealth, 1.0); }
+  }
+
+  private func Want(style: HotswapStyle, amount: Float) -> Void {
+    let i = EnumInt(style);
+    this.m_interest[i] += amount;
   }
 
   private func CanUse(item: ItemID, data: wref<gameItemData>, area: gamedataEquipmentArea) -> Bool {
@@ -938,15 +1030,18 @@ public class HotswapRecommender {
   private func Best(area: gamedataEquipmentArea, wanted: array<CName>, typed: Bool) -> ItemID {
     let best = ItemID.None();
     let bestScore = -1.0;
-    for data in this.m_stock.cyberware {
+    let i = 0;
+    while i < ArraySize(this.m_stock.cyberware) {
+      let data = this.m_stock.cyberware[i];
       let id = data.GetID();
       if this.CanUse(id, data, area) && (!typed || ArrayContains(wanted, this.Type(id))) {
-        let score = this.Score(id, data);
+        let score = this.m_cyberScores[i];
         if score > bestScore {
           bestScore = score;
           best = id;
         }
       }
+      i += 1;
     }
     return best;
   }
@@ -988,6 +1083,12 @@ public class HotswapRecommender {
     this.m_keepsTinkerer = this.LevelOf(tinkerer) >= this.m_ctx.dev.IsNewPerkBought(tinkerer);
     this.m_budget = this.DraftCapacity();
 
+    // A piece's worth doesn't change while the build is made, so it is worked out once.
+    ArrayClear(this.m_cyberScores);
+    for data in this.m_stock.cyberware {
+      ArrayPush(this.m_cyberScores, this.Score(data.GetID(), data));
+    }
+
     // Eyes never change here, so what they cost has to be counted.
     let eyes = 0;
     let eyeSlots = this.m_ctx.equip.GetNumberOfSlots(gamedataEquipmentArea.EyesCW, true);
@@ -1002,10 +1103,7 @@ public class HotswapRecommender {
 
     this.ChooseSystem();
     this.ChooseArms();
-
-    for area in [gamedataEquipmentArea.FrontalCortexCW, gamedataEquipmentArea.NervousSystemCW, gamedataEquipmentArea.CardiovascularSystemCW, gamedataEquipmentArea.IntegumentarySystemCW, gamedataEquipmentArea.ImmuneSystemCW, gamedataEquipmentArea.LegsCW, gamedataEquipmentArea.HandsCW, gamedataEquipmentArea.MusculoskeletalSystemCW] {
-      this.FillArea(area);
-    }
+    this.FillBody();
   }
 
   // Two slots depend on perks, and this draft's perks may differ from V's. The third skeleton slot
@@ -1021,37 +1119,69 @@ public class HotswapRecommender {
     return count;
   }
 
-  // A slot left empty here is emptied by the swap. What V wore there is either over budget or beyond
-  // the draft's attributes, so it couldn't stay anyway.
-  private func FillArea(area: gamedataEquipmentArea) -> Void {
-    if this.m_ctx.equip.GetEquipAreaIndex(area) < 0 {
-      return;
+  // The best piece anywhere on the body goes in first, then the next best, until the slots or the
+  // capacity run out. Filling one area at a time spent capacity on whichever area came first, so a
+  // Second Heart could be left out for lesser pieces. A slot left empty here is emptied by the swap.
+  private func FillBody() -> Void {
+    let areas = [gamedataEquipmentArea.FrontalCortexCW, gamedataEquipmentArea.NervousSystemCW, gamedataEquipmentArea.CardiovascularSystemCW, gamedataEquipmentArea.IntegumentarySystemCW, gamedataEquipmentArea.ImmuneSystemCW, gamedataEquipmentArea.LegsCW, gamedataEquipmentArea.HandsCW, gamedataEquipmentArea.MusculoskeletalSystemCW];
+    let open: array<Int32>;
+    let total: array<Int32>;
+    let next: array<Int32>;
+    for area in areas {
+      let exists = this.m_ctx.equip.GetEquipAreaIndex(area) >= 0;
+      ArrayPush(open, exists ? this.SlotsAfterPerks(area) : 0);
+      ArrayPush(total, exists ? this.m_ctx.equip.GetNumberOfSlots(area, true) : 0);
+      ArrayPush(next, 0);
     }
-    let none: array<CName>;
-    let link = [n"SmartLink"];
-    let open = this.SlotsAfterPerks(area);
-    let total = this.m_ctx.equip.GetNumberOfSlots(area, true);
-    let slot = 0;
-    while slot < total {
-      let item = ItemID.None();
-      if slot < open {
-        // Smart weapons only lock on through a Smart Link, so a build carrying one needs it first.
-        if slot == 0 && this.m_kit.smart && Equals(area, gamedataEquipmentArea.HandsCW) {
-          item = this.Best(area, link, true);
-          if !ItemID.IsValid(item) {
-            ArrayPush(this.m_draft.notes, "V's Smart weapons won't lock on without a Smart Link, and none fits this build.");
-          }
-        }
-        if !ItemID.IsValid(item) {
-          item = this.Best(area, none, false);
-        }
-      }
+
+    // Smart weapons only lock on through a Smart Link, so a build carrying one takes it first.
+    let hands = ArrayFindFirst(areas, gamedataEquipmentArea.HandsCW);
+    if this.m_kit.smart && hands >= 0 && open[hands] > 0 {
+      let link = [n"SmartLink"];
+      let item = this.Best(gamedataEquipmentArea.HandsCW, link, true);
       if ItemID.IsValid(item) {
-        this.Place(area, slot, item);
+        this.Place(gamedataEquipmentArea.HandsCW, 0, item);
+        next[hands] = 1;
       } else {
-        this.PlaceEmpty(area, slot);
+        ArrayPush(this.m_draft.notes, "V's Smart weapons won't lock on without a Smart Link, and none fits this build.");
       }
-      slot += 1;
+    }
+
+    while true {
+      let best = -1;
+      let bestArea = -1;
+      let bestScore = -1.0;
+      let i = 0;
+      while i < ArraySize(this.m_stock.cyberware) {
+        let data = this.m_stock.cyberware[i];
+        let id = data.GetID();
+        let a = ArrayFindFirst(areas, EquipmentSystem.GetEquipAreaType(id));
+        if a >= 0 && next[a] < open[a] && this.m_cyberScores[i] > bestScore && this.CanUse(id, data, areas[a]) {
+          bestScore = this.m_cyberScores[i];
+          best = i;
+          bestArea = a;
+        }
+        i += 1;
+      }
+      if best < 0 {
+        break;
+      }
+      let item = this.m_stock.cyberware[best].GetID();
+      this.Place(areas[bestArea], next[bestArea], item);
+      next[bestArea] += 1;
+      if ArraySize(this.m_draft.chrome) < 3 {
+        ArrayPush(this.m_draft.chrome, HotswapGear.DisplayName(this.m_ctx, item));
+      }
+    }
+
+    let a = 0;
+    while a < ArraySize(areas) {
+      let slot = next[a];
+      while slot < total[a] {
+        this.PlaceEmpty(areas[a], slot);
+        slot += 1;
+      }
+      a += 1;
     }
   }
 
@@ -1121,7 +1251,9 @@ public class HotswapRecommender {
     let scores: array<Float>;
     for id in this.m_stock.programs {
       let record = TweakDBInterface.GetItemRecord(ItemID.GetTDBID(id));
-      let score = HotswapRecommender.QualityRank(RPGManager.GetItemQualityFromRecord(record));
+      let shard = TweakDBInterface.GetCName(ItemID.GetTDBID(id) + t".shardType", n"");
+      let score = HotswapKnowledge.HackPriority(this.m_type.id, shard) * 10.0
+        + HotswapRecommender.QualityRank(RPGManager.GetItemQualityFromRecord(record));
       this.OfferProgram(id, score, programs, scores);
     }
     let used = 0;
@@ -1185,7 +1317,8 @@ public class HotswapRecommender {
       return 0.0;
     }
     let dps = this.m_stock.maxDps > 0.0 ? data.GetStatValueByType(gamedataStatType.EffectiveDPS) / this.m_stock.maxDps : 0.0;
-    return fit * 100.0 + dps * 25.0 + HotswapRecommender.Rank(data) * 2.0;
+    let iconic = RPGManager.IsItemIconic(data) ? 8.0 : 0.0;
+    return fit * 100.0 + dps * 25.0 + HotswapRecommender.Rank(data) * 2.0 + iconic;
   }
 
   // 1 for a silenced weapon: built in (the record's Silenced tag) or with a silencer on its muzzle. A
@@ -1271,7 +1404,11 @@ public class HotswapRecommender {
   private func ChooseWeapons() -> Void {
     let picks: array<ItemID>;
     let open = Min(3, this.m_ctx.equip.GetNumberOfSlots(gamedataEquipmentArea.Weapon, false));
-    for kind in [2, 1, 0] {
+    let order = [2, 1, 0];
+    if this.m_type.id == 1 || (this.m_type.id == 2 && this.m_kit.blunt) {
+      order = [1, 2, 0];
+    }
+    for kind in order {
       let item = ArraySize(picks) < open ? this.BestWeapon(kind, false) : ItemID.None();
       if ItemID.IsValid(item) {
         this.m_bag.Claim(item);

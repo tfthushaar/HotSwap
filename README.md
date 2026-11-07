@@ -4,8 +4,8 @@ Five build presets for Cyberpunk 2077 2.5. Save V's whole build, then switch to 
 with one click: cyberware, quickhacks, weapons, quick items, perks and attributes, with no ripperdoc
 visit. Or let Hotswap make one for you from what V already owns.
 
-> **Status: early and untested.** Everything compiles against the game, and against Equipment-EX and
-> Cyberware-EX, but none of it has been played yet. Keep a save from before you install it.
+> **Version 1.0.0.** Tested in game on Cyberpunk 2077 2.5. Compiles alongside Equipment-EX and
+> Cyberware-EX. Keep a save from before you install it, as with any mod that changes your build.
 
 ## Requirements
 
@@ -48,6 +48,12 @@ attributes, perks, cyberware, quickhacks, weapons and weapon mods, with no rippe
 chosen for what the build needs, so a stealth build takes a silenced pistol over a louder one that
 hits harder. Each weapon gets the best mods V owns for that build. Where V has two copies of
 something, the higher grade is used.
+
+Cyberware is judged by what each piece does. Hotswap knows every cyberware type in the game: how
+strong it is for anyone, and which styles it serves. Second Heart goes in almost every build, melee
+builds get melee cyberware such as Microrotors and Dense Marrow, and a Ghost gets Optical Camo and
+Lynx Paws. The best piece goes in first anywhere on the body, so capacity goes to what matters most.
+Quickhacks are chosen the same way: a Ghost loads quiet hacks, a Netrunner lethal ones.
 
 Recommendations are worked out fresh each time you open them, so they improve as V finds better
 gear.
