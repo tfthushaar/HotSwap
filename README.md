@@ -1,11 +1,17 @@
 # Hotswap
 
-Five build presets for Cyberpunk 2077 2.5. Save V's whole build, then switch to it from the inventory
-with one click: cyberware, quickhacks, weapons, quick items, perks and attributes, with no ripperdoc
-visit. Or let Hotswap make one for you from what V already owns.
+Hotswap keeps up to five complete builds for V in Cyberpunk 2077 and switches between them from the
+inventory in one click. A build covers cyberware, quickhacks, weapons, weapon mods, quick items, perks
+and attributes. You can go from a quiet netrunner to a melee bruiser without visiting a ripperdoc or
+respeccing by hand.
 
-> **Version 1.0.0.** Tested in game on Cyberpunk 2077 2.5. Compiles alongside Equipment-EX and
-> Cyberware-EX. Keep a save from before you install it, as with any mod that changes your build.
+If you'd rather not plan a build yourself, each slot can suggest five builds made from the gear V
+already owns.
+
+> **Early access.** Hotswap has been tested on Cyberpunk 2077 2.5, but every save and mod list is
+> different, so there will be bugs nobody has found yet. Make a save before you install it. If
+> something goes wrong, please open a bug report on the Hotswap Nexus page. See
+> [Reporting a bug](#reporting-a-bug) for what to include.
 
 ## Requirements
 
@@ -15,96 +21,122 @@ visit. Or let Hotswap make one for you from what V already owns.
 - [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780)
 - [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885)
 
+Optional: [Cyber Engine Tweaks](https://www.nexusmods.com/cyberpunk2077/mods/107). Hotswap runs
+without it, but CET is what writes Hotswap's log, and the log is what makes a bug report useful.
+
 ## Installing
 
-Install with a mod manager, or extract the zip into the game folder so that the scripts end up in
-`r6/scripts/Hotswap`. To update, extract the new version over the old one.
+**With Vortex:** install the required mods first, then add the Hotswap zip with "Install From File"
+and enable it.
 
-## Using it
+**By hand:** install the required mods first, then extract the zip into your Cyberpunk 2077 folder,
+the one that holds `bin`, `r6` and `Cyberpunk2077.exe`. The scripts should end up in
+`r6\scripts\Hotswap`.
 
-Open the inventory. The Builds column sits right beside OUTFIT, on the first page.
+To update, install the new version over the old one.
 
-| Hover a slot and press | On an empty slot | On a slot holding a build |
+To uninstall, disable Hotswap in Vortex or delete the `r6\scripts\Hotswap` folder. V keeps whatever
+build they have on. Your saved builds are stored in your save, so if you save the game while Hotswap
+is uninstalled, that save loses them.
+
+## Using Hotswap
+
+Open the inventory. The five build slots stand in a column to the right of OUTFIT.
+
+Hover a slot and press:
+
+| Key | On an empty slot | On a slot holding a build |
 |---|---|---|
 | Left click / A | Save V's current build here | Switch to it |
-| R / Y | Recommended builds | Save over it |
-| V / X | | Rename |
-| X / Right stick | | Clear |
-| Z | | Recommended builds (keyboard) |
+| R / Y | Show recommended builds | Save over it |
+| V / X | | Rename it |
+| X / Right stick | | Clear it |
+| Z | | Show recommended builds (keyboard only) |
 
-A dark slot is empty. A lit slot is what V is wearing now, and its light goes out if V's gear, perks or
-attributes change by hand. Hovering a build shows what would change.
+On a controller, Y saves over a build, so to see recommended builds for a slot that already holds
+one, clear the slot first.
+
+A dark slot is empty. The slot holding the build V is wearing lights up, and the light goes out as
+soon as you change V's gear, perks or attributes yourself. Hover any build to see what switching to
+it would change.
+
+### Switching builds
+
+A switch changes V in the same order a respec at a ripperdoc would. All cyberware comes off, perks
+and attributes are reset, attributes are assigned, then perks. Cyberware goes back on after that,
+then weapon mods and weapons. Each step takes a moment, and saving is blocked until it finishes.
+
+If anything fails to go on, V is put back the way they were and a popup says what failed. If a build
+names an item V no longer has, Hotswap tells you before it starts and asks whether to go ahead
+without it.
 
 ### Recommended builds
 
-Each slot offers five kinds of build: **Netrunner**, **Blade Dancer**, **Juggernaut**, **Ghost** and
-**Techie**, with the best fit for V first. None of them is a preset. Each is worked out from what V
-owns at that moment: the guns and cyberware that suit it, then attributes and perks chosen to serve
-that gear, using the points V has earned. Two players with different inventories get different
-builds.
+Press R (Y on a controller) on an empty slot. The slots change to show five builds, best fit for V
+first:
 
-Hover one to read it, and click it. After you confirm, it's saved and V switches to it:
-attributes, perks, cyberware, quickhacks, weapons and weapon mods, with no ripperdoc. Weapons are
-chosen for what the build needs, so a stealth build takes a silenced pistol over a louder one that
-hits harder. Each weapon gets the best mods V owns for that build. Where V has two copies of
-something, the higher grade is used.
+- **Netrunner:** quickhacks and smart weapons, Intelligence first
+- **Blade Dancer:** fast melee with blades, Reflexes first
+- **Juggernaut:** heavy weapons and heavy hits, Body first
+- **Ghost:** stealth and precise shots, Cool first
+- **Techie:** charged tech weapons and explosives, Technical Ability first
 
-Cyberware is judged by what each piece does. Hotswap knows every cyberware type in the game: how
-strong it is for anyone, and which styles it serves. Second Heart goes in almost every build, melee
-builds get melee cyberware such as Microrotors and Dense Marrow, and a Ghost gets Optical Camo and
-Lynx Paws. The best piece goes in first anywhere on the body, so capacity goes to what matters most.
-Quickhacks are chosen the same way: a Ghost loads quiet hacks, a Netrunner lethal ones.
+Each build is made from what V owns at that moment, so two players with different inventories get
+different builds, and the suggestions get better as V finds better gear.
 
-Recommendations are worked out fresh each time you open them, so they improve as V finds better
-gear.
+- **Cyberware** is picked by what each piece does. Second Heart goes into almost every build, melee
+  builds get melee cyberware such as Microrotors and Dense Marrow, and a Ghost gets Optical Camo and
+  Lynx Paws. The most valuable pieces go in first, so capacity is spent where it counts.
+- **Weapons** are picked to suit the build. A stealth build takes a silenced pistol over a louder one
+  that hits harder, and melee builds carry their melee weapon first.
+- **Weapon mods** are the best ones V owns for that build, moved onto the chosen weapons.
+- **Quickhacks** match the build: a Ghost loads quiet hacks, a Netrunner lethal ones.
+- **Attributes and perks** are spent around that gear, using the points V has earned.
+- If V owns two copies of something, the higher grade is used.
 
-A build that can't work at all, like a Netrunner with no cyberdeck, is greyed out and says what's
-missing. Items in the stash don't count.
+Hover a recommended build to see what it uses. Click it, confirm, and it's saved to the slot and V
+switches to it straight away. Press R (Y on a controller) again to go back without choosing.
 
-### Making your own builds
+A build that can't work at all, such as a Netrunner without a cyberdeck, is greyed out and tells you
+what's missing. Items in your stash aren't counted.
 
-Hotswap also removes two limits, so the game's own screens work as a build editor:
+### Changing your build by hand
 
-- **Reset Attributes**, on the Character screen, can be used as often as you like. If V's cyberware
-  needs perks the reset removes, Hotswap says which pieces have to come off and takes them off for
-  you. They stay in V's inventory.
-- **The Cyberware screen** can equip and remove cyberware V owns, from anywhere. Buying and upgrading
-  still happen at a ripperdoc.
+Hotswap also lifts two limits, so you can put a build together yourself before saving it:
 
-## When a swap can't go cleanly
+- **Reset Attributes**, on the Character screen, can be used as many times as you like. If some of
+  V's cyberware depends on perks the reset removes, Hotswap tells you which pieces have to come off
+  and takes them off for you. They stay in V's inventory.
+- **The Cyberware screen** in the inventory can equip and remove any cyberware V owns, wherever V is.
+  You still need a ripperdoc to buy or upgrade cyberware.
 
-A switch goes in the order a respec does: all cyberware off, perks and attributes reset, attributes
-assigned, then perks, then cyberware back on, then weapon mods and weapons.
+## When a switch can't happen
 
-Builds can't be changed in combat if they touch perks or attributes, during locked story moments, or
-while Sandevistan, Berserk or optical camo is running. If something in a build is gone, a popup says
-what and asks first. If a swap fails partway, V is put back as they were, and anything that didn't
-go back is named. Saving is blocked while a swap runs.
+You can't switch to a build that changes perks or attributes during combat. No build can be switched
+during story moments that lock your gear, or while Sandevistan, Berserk or optical camo is active.
 
-Builds belong to the save they were made in. Uninstalling leaves V in whatever build they have on.
-
-If a swap goes wrong, Hotswap writes what happened to `bin/x64/plugins/cyber_engine_tweaks/gamelog.log`,
-in lines starting `[Hotswap]`. That file is what to send with a bug report.
+Builds belong to the save they were made in.
 
 ## Settings
 
-In Mod Settings: allow gear-only swaps in combat, seconds between swaps, and eddies per swap. All are
-off by default.
+Open Mod Settings and find Hotswap. You can allow builds that only change gear to be switched in
+combat, set a cooldown between switches, and set an eddie cost for each switch. All three are off by
+default.
 
 ## Compatibility
 
-Compiles alongside Equipment-EX and Cyberware-EX. Perk overhauls can rename perks: names that no longer
-resolve are skipped and reported.
+Hotswap has been checked for conflicts with Equipment-EX and Cyberware-EX. If a perk overhaul renames
+perks, any perk a saved build can't find is skipped and listed before you switch.
 
-## Building from source
+## Reporting a bug
 
-`tools/compile.ps1` compiles in a throwaway folder with the game's own compiler, so the game folder is
-left alone. `tools/package.ps1 -Version x.y.z` builds a release zip.
+Please open a bug report on the Hotswap Nexus page and include:
 
-Before changing anything persisted, read the comment at the top of `Core/Types.reds`. Scripts are
-never deleted: see `tools/check_scripts_kept.ps1`. Array intrinsics such as `ArrayContains` only ever
-get a named array, never a function's result: `tools/check_array_arguments.ps1` runs on every compile,
-because the compiler accepts the other form and it crashes the game.
+- what you were doing when it happened
+- your `bin\x64\plugins\cyber_engine_tweaks\gamelog.log`, if you have Cyber Engine Tweaks. Close the
+  game first, since the file is only fully written on exit. The lines starting with `[Hotswap]` show
+  what happened during each switch.
+- a crash report, if the game crashed
 
 ## License
 
