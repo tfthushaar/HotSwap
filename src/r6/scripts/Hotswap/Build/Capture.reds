@@ -23,7 +23,7 @@ public abstract class HotswapCapture {
           let live = area.equipSlots[slot].itemID;
           let item = HotswapGear.Canon(ctx, area.areaType, live);
           sys.AddEntry(build, HotswapKindGear(), HotswapNames.OfArea(area.areaType), slot, item);
-          if ItemID.IsValid(item) && HotswapNames.IsCyberwareArea(area.areaType) {
+          if ItemID.IsValid(item) && (HotswapNames.IsCyberwareArea(area.areaType) || Equals(area.areaType, gamedataEquipmentArea.Weapon)) {
             HotswapCapture.Parts(ctx, sys, build, live, item);
           }
           slot += 1;
@@ -37,7 +37,7 @@ public abstract class HotswapCapture {
   public static func Parts(ctx: ref<HotswapContext>, sys: ref<HotswapSystem>, build: Int32, live: ItemID, named: ItemID) -> Void {
     let slots = ItemModificationSystem.GetAllSlots(ctx.player, live);
     for slot in slots {
-      if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(slot.slotID, slot.innerItemData) {
+      if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(live, slot.slotID, slot.innerItemData) {
         sys.AddPart(build, named, slot.slotID, slot.installedPart);
       }
     }

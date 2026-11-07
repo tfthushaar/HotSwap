@@ -43,8 +43,14 @@ owns at that moment: the guns and cyberware that suit it, then attributes and pe
 that gear, using the points V has earned. Two players with different inventories get different
 builds.
 
-Hover one to read it. **One click saves it and switches V to it**: attributes, perks, cyberware,
-quickhacks and weapons, with no ripperdoc.
+Hover one to read it, and click it. After you confirm, it's saved and V switches to it:
+attributes, perks, cyberware, quickhacks, weapons and weapon mods, with no ripperdoc. Weapons are
+chosen for what the build needs, so a stealth build takes a silenced pistol over a louder one that
+hits harder. Each weapon gets the best mods V owns for that build. Where V has two copies of
+something, the higher grade is used.
+
+Recommendations are worked out fresh each time you open them, so they improve as V finds better
+gear.
 
 A build that can't work at all, like a Netrunner with no cyberdeck, is greyed out and says what's
 missing. Items in the stash don't count.
@@ -60,6 +66,9 @@ Hotswap also removes two limits, so the game's own screens work as a build edito
   still happen at a ripperdoc.
 
 ## When a swap can't go cleanly
+
+A switch goes in the order a respec does: all cyberware off, perks and attributes reset, attributes
+assigned, then perks, then cyberware back on, then weapon mods and weapons.
 
 Builds can't be changed in combat if they touch perks or attributes, during locked story moments, or
 while Sandevistan, Berserk or optical camo is running. If something in a build is gone, a popup says

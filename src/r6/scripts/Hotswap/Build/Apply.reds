@@ -1,9 +1,10 @@
 // Hotswap - running a swap.
 //
-// Gear comes off, then perks and attributes change, then gear goes on. Each side's requirements are
-// met by the step before it: taking cyberware off frees the capacity that lets capacity perks be
-// sold, and setting attributes and perks first opens the slots and meets the requirements of what
-// goes back on.
+// A build changes in the order a respec takes: every piece of cyberware comes off, every perk and
+// attribute point is reset, attributes are assigned, then perks, then cyberware goes back on, then
+// weapon mods, weapons and quick items. Each step meets the needs of the next. With nothing equipped
+// no perk is held in place by the cyberware using it, and capacity is only checked once the perks
+// that set it are final, which is when EquipItem checks it (HumanityAllocationPrereq).
 //
 // Equip requests are queued and take effect later, and the capacity check inside EquipItem fails
 // silently, so a stage never assumes anything worked. It reads the slots back until they match or it
@@ -55,7 +56,6 @@ public class HotswapApply {
   private let m_waited: Int32;
   private let m_lastTickAt: Float;
   private let m_isUndo: Bool;
-  private let m_stripped: Bool;
   private let m_totals: ref<HotswapTotals>;
   private let m_cleared: array<ref<HotswapSlotRef>>;
   private let m_problems: array<String>;
@@ -87,6 +87,7 @@ public class HotswapApply {
     this.m_lastTickAt = this.Now();
     this.m_totals = HotswapTotals.Read(ctx);
     HotswapCapture.Into(ctx, sys, HotswapUndoBuild());
+    HotswapPlanner.KeepUnlisted(ctx, plan);
     HSLog(s"Swap to \(plan.name) begins. \(this.m_totals.Describe())");
     this.Enter(HotswapStage.CyberOff);
     this.Schedule();
@@ -215,45 +216,50 @@ public class HotswapApply {
 
   // ---- Cyberware off ---------------------------------------------------------------------------
 
-  // Capacity boosters come off last and go on first, so V is never over the limit between stages.
+  // A swap that changes neither cyberware nor perks leaves cyberware alone. Anything else takes all of
+  // it off first. Capacity boosters come off last, so V is never over the limit on the way down.
   private func QueueCyberOff() -> Void {
     ArrayClear(this.m_cleared);
-    this.ClearOutgoing(false);
-    this.ClearOutgoing(true);
+    if this.m_plan.changedCyberware == 0 && !this.m_plan.ChangesDevelopment() {
+      return;
+    }
     let arms = this.m_plan.WantAt(gamedataEquipmentArea.ArmsCW, 0);
     if IsDefined(arms) && !arms.missing
       && !HotswapGear.Holds(this.m_ctx, arms.area, arms.slot, arms.item)
       && HotswapGear.NeedsStyleCleared(this.m_ctx, arms.item) {
       HotswapGear.ClearArmStyle(this.m_ctx);
     }
+    this.StripEverything();
+    HSLog(s"Taking off \(ArraySize(this.m_cleared)) pieces of cyberware");
   }
 
-  private func ClearOutgoing(boosters: Bool) -> Void {
-    for want in this.m_plan.gear {
-      if HotswapNames.IsCyberwareArea(want.area) && !want.missing {
-        this.ClearCyberware(want.area, want.slot, want.item, boosters);
+  // Eyes stay: V can't be without them, and new ones replace the old in one step. An item the game
+  // pins in place stays too, and is only a problem if the build wants something else there.
+  private func StripEverything() -> Void {
+    let loadout = this.m_ctx.equip.GetEquipment();
+    for boosters in [false, true] {
+      for area in loadout.equipAreas {
+        if HotswapNames.IsCyberwareArea(area.areaType) && NotEquals(area.areaType, gamedataEquipmentArea.EyesCW) {
+          let slot = 0;
+          let count = ArraySize(area.equipSlots);
+          while slot < count {
+            let raw = HotswapGear.Raw(this.m_ctx, area.areaType, slot);
+            if ItemID.IsValid(raw) && Equals(HotswapGear.IsBooster(this.m_ctx, raw), boosters) {
+              if HotswapGear.IsPinned(this.m_ctx, raw) {
+                let want = this.m_plan.WantAt(area.areaType, slot);
+                if IsDefined(want) && !want.missing && !HotswapGear.Holds(this.m_ctx, area.areaType, slot, want.item) {
+                  ArrayPush(this.m_problems, HotswapGear.DisplayName(this.m_ctx, raw));
+                }
+              } else {
+                HotswapGear.QueueUnequip(this.m_ctx, area.areaType, slot);
+                ArrayPush(this.m_cleared, HotswapSlotRef.Make(area.areaType, slot));
+              }
+            }
+            slot += 1;
+          }
+        }
       }
     }
-  }
-
-  private func ClearCyberware(area: gamedataEquipmentArea, slot: Int32, keep: ItemID, boosters: Bool) -> Void {
-    // Eyes are never left empty. They stay on until something replaces them.
-    if Equals(area, gamedataEquipmentArea.EyesCW) {
-      return;
-    }
-    let raw = HotswapGear.Raw(this.m_ctx, area, slot);
-    if !ItemID.IsValid(raw) || HotswapGear.Holds(this.m_ctx, area, slot, keep) {
-      return;
-    }
-    if NotEquals(HotswapGear.IsBooster(this.m_ctx, raw), boosters) {
-      return;
-    }
-    if HotswapGear.IsPinned(this.m_ctx, raw) {
-      ArrayPush(this.m_problems, HotswapGear.DisplayName(this.m_ctx, raw));
-      return;
-    }
-    HotswapGear.QueueUnequip(this.m_ctx, area, slot);
-    ArrayPush(this.m_cleared, HotswapSlotRef.Make(area, slot));
   }
 
   private func AllCleared() -> Bool {
@@ -265,37 +271,10 @@ public class HotswapApply {
     return true;
   }
 
-  // Kept cyberware can be what stops a capacity perk being sold. It comes off too, and the stages
-  // after this put it back, parts included, because they compare the build with the live slots.
-  private func StripEverything() -> Void {
-    ArrayClear(this.m_cleared);
-    let loadout = this.m_ctx.equip.GetEquipment();
-    for pass in [false, true] {
-      for area in loadout.equipAreas {
-        if HotswapNames.IsCyberwareArea(area.areaType) {
-          let slot = 0;
-          let count = ArraySize(area.equipSlots);
-          while slot < count {
-            this.ClearCyberware(area.areaType, slot, ItemID.None(), pass);
-            slot += 1;
-          }
-        }
-      }
-    }
-  }
-
   // ---- Perks and attributes --------------------------------------------------------------------
 
-  // A sale the game refuses can leave perks half sold. That is safe, because the next pass compares
-  // the build with V's live levels and carries on from there.
   private func RunDevelopment() -> Void {
     let result = HotswapDevelopment.Run(this.m_ctx, this.m_plan, this.m_problems);
-    if Equals(result, HotswapDevelopmentResult.Blocked) && !this.m_stripped {
-      this.m_stripped = true;
-      this.StripEverything();
-      this.Enter(HotswapStage.WaitCyberOff);
-      return;
-    }
     if NotEquals(result, HotswapDevelopmentResult.Done) {
       this.Fail(HotswapText.PerksStuck());
       return;
@@ -308,20 +287,34 @@ public class HotswapApply {
         return;
       }
     }
+    if this.m_plan.ChangesDevelopment() {
+      HSLog(s"Perks and attributes set. \(after.Describe())");
+    }
     this.Enter(HotswapStage.Settle);
   }
 
   // ---- Cyberware on ----------------------------------------------------------------------------
 
+  // Capacity boosters go on first, then eyes, while V has the most room, then everything else.
   private func QueueCyberOn() -> Void {
-    this.PlaceCyberware(true);
-    this.PlaceCyberware(false);
+    let phase = 0;
+    while phase < 3 {
+      this.PlaceCyberware(phase);
+      phase += 1;
+    }
   }
 
-  private func PlaceCyberware(boosters: Bool) -> Void {
+  private func Phase(want: ref<HotswapWant>) -> Int32 {
+    if HotswapGear.IsBooster(this.m_ctx, want.item) {
+      return 0;
+    }
+    return Equals(want.area, gamedataEquipmentArea.EyesCW) ? 1 : 2;
+  }
+
+  private func PlaceCyberware(phase: Int32) -> Void {
     for want in this.m_plan.gear {
       if HotswapNames.IsCyberwareArea(want.area) && !want.missing && ItemID.IsValid(want.item)
-        && Equals(HotswapGear.IsBooster(this.m_ctx, want.item), boosters)
+        && this.Phase(want) == phase
         && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
         if HotswapGear.IsLocked(this.m_ctx, want.area, want.slot) {
           HSLog(s"Slot \(want.slot) of \(HotswapNames.OfArea(want.area)) is locked");
@@ -360,9 +353,34 @@ public class HotswapApply {
         let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, live);
         for slot in slots {
           if Equals(slot.status, ESlotState.Taken)
-            && HotswapGear.IsTrackedPart(slot.slotID, slot.innerItemData)
+            && HotswapGear.IsTrackedPart(live, slot.slotID, slot.innerItemData)
             && !this.KeepPart(host, slot.slotID, slot.installedPart) {
             HotswapGear.QueuePartRemoval(this.m_ctx, live, slot.slotID);
+          }
+        }
+      }
+    }
+    this.FreeHeldParts();
+  }
+
+  // A weapon mod the build wants can be on one of V's weapons that the build doesn't use. It comes off
+  // there first, or it would never be free to go on.
+  private func FreeHeldParts() -> Void {
+    let list: array<wref<gameItemData>>;
+    this.m_ctx.ts.GetItemList(this.m_ctx.player, list);
+    for want in this.m_plan.parts {
+      if !want.missing && RPGManager.IsItemWeapon(want.host)
+        && !this.m_ctx.ts.HasItem(this.m_ctx.player, want.part)
+        && !HotswapPlanner.PartIsOn(this.m_ctx, this.m_plan, want) {
+        for data in list {
+          let holder = IsDefined(data) ? data.GetID() : ItemID.None();
+          if RPGManager.IsItemWeapon(holder) && !HotswapGear.Same(holder, want.host) {
+            let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, holder);
+            for slot in slots {
+              if Equals(slot.status, ESlotState.Taken) && slot.installedPart == want.part {
+                HotswapGear.QueuePartRemoval(this.m_ctx, holder, slot.slotID);
+              }
+            }
           }
         }
       }
@@ -607,8 +625,8 @@ public class HotswapApply {
     this.m_isUndo = true;
     // From here on, problems are what the undo couldn't restore.
     ArrayClear(this.m_problems);
-    this.m_stripped = false;
     this.m_plan = HotswapPlanner.Make(this.m_ctx, sys, HotswapUndoBuild());
+    HotswapPlanner.KeepUnlisted(this.m_ctx, this.m_plan);
     this.Enter(HotswapStage.CyberOff);
   }
 }

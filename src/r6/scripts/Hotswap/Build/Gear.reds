@@ -160,14 +160,28 @@ public abstract class HotswapGear {
     GameInstance.GetScriptableSystemsContainer(ctx.game).Get(n"ItemModificationSystem").QueueRequest(request);
   }
 
-  // The parts a build tracks are the ones the game strips when cyberware comes off. Stat shards and
-  // dummy parts stay on the item either way (UnequipCyberwareParts), so they are not ours to move.
-  public static func IsTrackedPart(attach: TweakDBID, data: InnerItemData) -> Bool {
+  // On a weapon, the parts a build tracks are its scope, its muzzle and its mods: the slots the game
+  // itself lists as attachments and mods for that kind of weapon (RPGManager). A weapon's receiver,
+  // barrel and magazine are the weapon, and an iconic's own mod can't be moved.
+  //
+  // On cyberware they are the ones the game strips when it comes off. Stat shards and dummy parts stay
+  // on the item either way (UnequipCyberwareParts), so they are not ours to move.
+  public static func IsTrackedPart(host: ItemID, attach: TweakDBID, data: InnerItemData) -> Bool {
+    if RPGManager.IsItemWeapon(host) {
+      return HotswapGear.IsWeaponModSlot(host, attach);
+    }
     if attach == t"AttachmentSlots.StatsShardSlot" {
       return false;
     }
     let record = InnerItemData.GetStaticData(data);
     return !IsDefined(record) || !record.TagsContains(n"DummyPart");
+  }
+
+  public static func IsWeaponModSlot(weapon: ItemID, attach: TweakDBID) -> Bool {
+    if attach == t"AttachmentSlots.Scope" || attach == t"AttachmentSlots.PowerModule" {
+      return true;
+    }
+    return ArrayContains(RPGManager.GetModsSlotIDs(RPGManager.GetItemType(weapon)), attach);
   }
 
   // Changing arms to a different kind leaves the old cosmetic style on them. The ripperdoc clears

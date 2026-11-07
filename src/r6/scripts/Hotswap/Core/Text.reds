@@ -94,7 +94,11 @@ public abstract class HotswapText {
   public static func ConfirmTitle() -> String = "Switch anyway?"
   public static func PartialBody(const missing: script_ref<array<String>>) -> String = HotswapText.Join(missing) + " can't be found. Switch anyway?"
   public static func ReplaceTitle() -> String = "Replace this build?"
-  public static func ReplaceBody(name: String, recommended: String) -> String = "Replace " + name + " with the recommended " + recommended + " build?"
+  public static func ReplaceBody(name: String, recommended: String) -> String = "Replace " + name + " with the recommended " + recommended + " build, and switch V to it now? Attributes, perks, cyberware, weapons and weapon mods all change."
+  public static func AdoptTitle(name: String) -> String = "Switch to " + name + "?"
+  public static func AdoptBody(slot: Int32, attributes: String) -> String {
+    return "This saves the build in slot " + IntToString(slot + 1) + " and switches V to it now. Attributes, perks, cyberware, weapons and weapon mods all change.\nAttributes: " + attributes;
+  }
   public static func FailedTitle() -> String = "Build not switched"
 
   public static func HintSwitch() -> String = "Switch to build"

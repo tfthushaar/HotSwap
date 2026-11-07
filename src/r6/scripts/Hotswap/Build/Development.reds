@@ -1,82 +1,71 @@
 // Hotswap - changing perks and attributes.
 //
-// These calls are synchronous, as they are in the game's own reset (OnResetConfirmed), so the result
-// of each is known at once and this whole file runs inside one tick.
+// A build change takes the order a respec takes at a ripperdoc. By the time this runs, every piece of
+// cyberware is already off (HotswapApply), so nothing can hold a perk in place. Then everything is
+// reset with the game's own calls, the ones its Reset button makes (OnResetConfirmed): ResetNewPerks
+// sells and locks every perk, and ResetAttributes puts every attribute back to 3 and refunds it.
+// Attributes are bought next, because perks need them, and perks last.
 //
-// The perk tree has an order both ways: a perk can't be sold while anything above it has levels, and
-// can't be bought until everything below it is maxed. Rather than sort the tree, selling and buying
-// repeat until nothing is left to do. Whatever is blocked this pass is free the next, and a pass that
-// moves nothing means the rest will never move.
+// These calls are synchronous, so the result of each is known at once and this whole file runs inside
+// one tick. Buying repeats until nothing is left to do, since a perk can't be bought until everything
+// below it is maxed. Whatever is blocked one pass is free the next, and a pass that buys nothing
+// means the rest will never come.
 
 enum HotswapDevelopmentResult {
   Done = 0,
-  Blocked = 1,    // the game won't sell a perk while cyberware depends on it
-  Stuck = 2,
+  Stuck = 1,
 }
 
 public abstract class HotswapDevelopment {
 
   public static func Run(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, out problems: array<String>) -> HotswapDevelopmentResult {
-    let sold = HotswapDevelopment.Sell(ctx, plan);
-    if NotEquals(sold, HotswapDevelopmentResult.Done) {
-      return sold;
+    if !plan.ChangesDevelopment() {
+      return HotswapDevelopmentResult.Done;
     }
-    if !HotswapDevelopment.SetAttributes(ctx, plan) {
+    if !HotswapDevelopment.ResetAll(ctx) || !HotswapDevelopment.SetAttributes(ctx, plan) {
       return HotswapDevelopmentResult.Stuck;
     }
-    HotswapDevelopment.Relock(ctx);
     HotswapDevelopment.Buy(ctx, plan, problems);
+    HotswapDevelopment.Relock(ctx);
     return HotswapDevelopmentResult.Done;
   }
 
-  // CanSellNewPerk is asked before every sale, not once at the start. It compares the capacity free
-  // now with what one perk gives, so two capacity perks can each pass on their own and still leave V
-  // over the limit between them. The game only stays safe because a player sells them one at a time.
-  private static func Sell(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> HotswapDevelopmentResult {
-    let passes = 0;
-    while passes < 64 {
-      let left = false;
-      let moved = false;
-      for want in plan.perks {
-        while ctx.dev.IsNewPerkBought(want.perk) > want.level {
-          let allowed = PlayerDevelopmentSystem.CanSellNewPerk(ctx.player, want.perk);
-          if !allowed.success {
-            return HotswapDevelopmentResult.Blocked;
-          }
-          let sold: Int32;
-          if !ctx.dev.SellNewPerk(want.perk, sold) {
-            left = true;
-            break;
-          }
-          moved = true;
-          HotswapDevelopment.AnnounceSold(ctx, want.perk, sold);
-        }
+  // ResetNewPerks tells the perk screen and V what it sold. The inventory keeps its own cache of what
+  // perks do to items, and is told here, as the perk screen tells it after a sale.
+  private static func ResetAll(ctx: ref<HotswapContext>) -> Bool {
+    let sold: array<gamedataNewPerkType>;
+    let i = 0;
+    let count = HotswapNames.PerkCount();
+    while i < count {
+      let perk = HotswapNames.PerkAt(i);
+      if ctx.dev.IsNewPerkBought(perk) > 0 {
+        ArrayPush(sold, perk);
       }
-      if !left {
-        return HotswapDevelopmentResult.Done;
-      }
-      if !moved {
-        return HotswapDevelopmentResult.Stuck;
-      }
-      passes += 1;
+      i += 1;
     }
-    return HotswapDevelopmentResult.Stuck;
+    ctx.dev.ResetNewPerks();
+    for perk in sold {
+      if ctx.dev.IsNewPerkBought(perk) > 0 {
+        HSLog(s"Perk \(HotswapNames.OfPerk(perk)) did not reset");
+        return false;
+      }
+      let request = new SellNewPerk();
+      request.Set(ctx.player, perk);
+      UIInventoryScriptableSystem.GetInstance(ctx.game).QueueRequest(request);
+    }
+    ctx.dev.ResetAttributes();
+    for stat in HotswapNames.Attributes() {
+      if Cast<Int32>(ctx.dev.GetAttributeValue(stat)) != 3 {
+        HSLog(s"Attribute \(HotswapNames.OfStat(stat)) did not reset");
+        return false;
+      }
+      HotswapDevelopment.AnnounceAttribute(ctx, stat);
+    }
+    return true;
   }
 
-  // The refund in ResetAttribute is paid whether or not the attribute really dropped, so each one is
-  // read back. Lowering all of them first means the points are there for the raises.
   private static func SetAttributes(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> Bool {
-    for want in plan.attributes {
-      if want.value < Cast<Int32>(ctx.dev.GetAttributeValue(want.stat)) {
-        ctx.dev.ResetAttribute(want.stat);
-        if Cast<Int32>(ctx.dev.GetAttributeValue(want.stat)) != 3 {
-          HSLog(s"Attribute \(HotswapNames.OfStat(want.stat)) did not reset");
-          return false;
-        }
-        HotswapDevelopment.AnnounceAttribute(ctx, want.stat);
-      }
-    }
-    for want in plan.attributes {
+    for want in plan.attributeTargets {
       let guard = 0;
       while Cast<Int32>(ctx.dev.GetAttributeValue(want.stat)) < want.value && guard < 64 {
         if !ctx.dev.BuyAttribute(want.stat) {
@@ -90,10 +79,9 @@ public abstract class HotswapDevelopment {
     return true;
   }
 
-  // The game's reset locks everything, so it never meets a perk that is unlocked but now above V's
-  // attributes. Changing only what differs can leave those behind, and the perk screen would then
-  // offer perks V can't have. Only level 0 perks: locking one with levels loses it without removing
-  // its effect (LockNewPerk).
+  // The reset locks every perk. Buying unlocks what the attributes now reach, and this locks anything
+  // left unlocked above them, as the game's own screens expect. Only level 0 perks: locking one with
+  // levels loses it without removing its effect (LockNewPerk).
   private static func Relock(ctx: ref<HotswapContext>) -> Void {
     for tree in HotswapNames.PerkTrees() {
       let perks: array<wref<NewPerk_Record>>;
@@ -128,7 +116,7 @@ public abstract class HotswapDevelopment {
       left = false;
       let moved = false;
       HotswapDevelopment.Unlock(ctx);
-      for want in plan.perks {
+      for want in plan.perkTargets {
         while ctx.dev.IsNewPerkBought(want.perk) < want.level {
           if !ctx.dev.IsNewPerkUnlocked(want.perk) || !ctx.dev.BuyNewPerk(want.perk) {
             left = true;
@@ -143,7 +131,7 @@ public abstract class HotswapDevelopment {
       }
       passes += 1;
     }
-    for want in plan.perks {
+    for want in plan.perkTargets {
       if ctx.dev.IsNewPerkBought(want.perk) < want.level {
         ArrayPush(problems, HotswapText.PerkName(want.perk));
       }
@@ -165,19 +153,6 @@ public abstract class HotswapDevelopment {
       blackboard.SetVariant(definition.attribute, ToVariant(data));
       blackboard.SignalVariant(definition.attribute);
     }
-  }
-
-  // The perk screen tells these same three parties, and the inventory keeps its own cache of what
-  // perks do to items.
-  private static func AnnounceSold(ctx: ref<HotswapContext>, perk: gamedataNewPerkType, level: Int32) -> Void {
-    let evt = new NewPerkSoldEvent();
-    evt.perkType = perk;
-    evt.perkLevelSold = level;
-    GameInstance.GetUISystem(ctx.game).QueueEvent(evt);
-    ctx.player.QueueEvent(evt);
-    let request = new SellNewPerk();
-    request.Set(ctx.player, perk);
-    UIInventoryScriptableSystem.GetInstance(ctx.game).QueueRequest(request);
   }
 
   private static func AnnounceBought(ctx: ref<HotswapContext>, perk: gamedataNewPerkType) -> Void {

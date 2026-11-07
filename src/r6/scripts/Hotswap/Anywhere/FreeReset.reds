@@ -10,9 +10,10 @@
 // time, though the reset sells them all at once, so it can pass and still leave V over capacity.
 //
 // So when something has to come off first, the reset becomes a swap: a plan for no perks, base
-// attributes and V's cyberware minus what can't stay. The swap already removes things in order,
-// checks every result and rolls back if one fails. A V with nothing in the way gets the game's own
-// reset, with its confirmation, refund and animation. Combat still refuses it, as the game does.
+// attributes and V's cyberware minus what can't stay. The swap takes all cyberware off, resets, and
+// puts back what fits, checking every result and rolling back if one fails. A V with nothing in the
+// way gets the game's own reset, with its confirmation, refund and animation. Combat still refuses
+// it, as the game does.
 
 public abstract class HotswapReset {
 
@@ -21,6 +22,16 @@ public abstract class HotswapReset {
     if ItemID.IsValid(item) {
       ArrayPush(off, item);
     }
+  }
+
+  // What a piece costs with no perks. Cyberware Tinkerer takes a point off some pieces, and each of
+  // those carries the discount as a stat.
+  private static func CostWithoutPerks(ctx: ref<HotswapContext>, item: ItemID) -> Float {
+    let data = ctx.ItemData(item);
+    if !IsDefined(data) {
+      return 0.0;
+    }
+    return data.GetStatValueByType(gamedataStatType.HumanityAllocated) + data.GetStatValueByType(gamedataStatType.Tech_Central_Milestone_2_Discount);
   }
 
   // The biggest piece still on, so as few as possible come off. The operating system and arms go only
@@ -35,7 +46,7 @@ public abstract class HotswapReset {
         for slot in area.equipSlots {
           let item = slot.itemID;
           if ItemID.IsValid(item) && !ArrayContains(Deref(off), item) && !HotswapGear.IsBooster(ctx, item) && !HotswapGear.IsPinned(ctx, item) {
-            let size = HotswapGear.Capacity(ctx, item);
+            let size = HotswapReset.CostWithoutPerks(ctx, item);
             if size > most {
               most = size;
               best = item;
@@ -64,15 +75,21 @@ public abstract class HotswapReset {
       }
       slot += 1;
     }
-    // Capacity that comes from perks, all of it going at once.
-    let free = ctx.Stat(gamedataStatType.HumanityAvailable);
-    for item in off {
-      free += HotswapGear.Capacity(ctx, item);
+    // With no perks, capacity loses what Driver Update and Edgerunner give, and the pieces Cyberware
+    // Tinkerer discounts cost their full price. What stays on has to fit in that.
+    let capacity = ctx.Stat(gamedataStatType.Humanity) - ctx.Stat(gamedataStatType.Tech_Central_Perk_2_2_Humanity);
+    let used = 0.0;
+    let loadout = ctx.equip.GetEquipment();
+    for area in loadout.equipAreas {
+      if HotswapNames.IsCyberwareArea(area.areaType) {
+        for slot in area.equipSlots {
+          if ItemID.IsValid(slot.itemID) && !ArrayContains(off, slot.itemID) {
+            used += HotswapReset.CostWithoutPerks(ctx, slot.itemID);
+          }
+        }
+      }
     }
-    let owed = ctx.Stat(gamedataStatType.Tech_Central_Perk_2_2_Humanity)
-      + ctx.Stat(gamedataStatType.Tech_Master_Perk_3_Humanity)
-      + ctx.Stat(gamedataStatType.Tech_Central_Milestone_2_Discount);
-    while free < owed {
+    while used > capacity {
       let next = HotswapReset.Biggest(ctx, off, false);
       if !ItemID.IsValid(next) {
         next = HotswapReset.Biggest(ctx, off, true);
@@ -81,7 +98,7 @@ public abstract class HotswapReset {
         break;
       }
       ArrayPush(off, next);
-      free += HotswapGear.Capacity(ctx, next);
+      used -= HotswapReset.CostWithoutPerks(ctx, next);
     }
     return off;
   }
@@ -120,6 +137,10 @@ public abstract class HotswapReset {
       i += 1;
     }
     for stat in HotswapNames.Attributes() {
+      let target = new HotswapAttributeWant();
+      target.stat = stat;
+      target.value = 3;
+      ArrayPush(plan.attributeTargets, target);
       if Cast<Int32>(ctx.dev.GetAttributeValue(stat)) != 3 {
         let want = new HotswapAttributeWant();
         want.stat = stat;

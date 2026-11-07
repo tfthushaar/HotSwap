@@ -22,6 +22,7 @@ enum HotswapPopup {
   ConfirmPartial = 5,
   ConfirmReplace = 6,
   Message = 7,
+  ConfirmAdopt = 8,
 }
 
 public class HotswapRow {
@@ -367,12 +368,13 @@ public class HotswapRow {
       this.Tell(draft.name, draft.blocker);
       return;
     }
+    // Switching changes everything about V, so it always asks first.
+    this.m_popupDraft = draft;
     if sys.IsUsed(this.m_target) {
-      this.m_popupDraft = draft;
       this.Confirm(HotswapPopup.ConfirmReplace, this.m_target, HotswapText.ReplaceTitle(), HotswapText.ReplaceBody(sys.GetName(this.m_target), draft.name));
-      return;
+    } else {
+      this.Confirm(HotswapPopup.ConfirmAdopt, this.m_target, HotswapText.AdoptTitle(draft.name), HotswapText.AdoptBody(this.m_target, draft.attributes));
     }
-    this.Adopt(draft);
   }
 
   // A recommended build is saved and put on in one click. Everything that can stop a switch still
@@ -459,6 +461,7 @@ public class HotswapRow {
         this.m_popupPlan = null;
         break;
       case HotswapPopup.ConfirmReplace:
+      case HotswapPopup.ConfirmAdopt:
         if yes && IsDefined(this.m_popupDraft) {
           this.Adopt(this.m_popupDraft);
         }

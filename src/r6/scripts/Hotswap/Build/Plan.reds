@@ -41,6 +41,8 @@ public class HotswapPlan {
   public let parts: array<ref<HotswapPartWant>>;
   public let perks: array<ref<HotswapPerkWant>>;              // only the perks that change
   public let attributes: array<ref<HotswapAttributeWant>>;    // only the attributes that change
+  public let perkTargets: array<ref<HotswapPerkWant>>;        // every perk the build has, with levels
+  public let attributeTargets: array<ref<HotswapAttributeWant>>;  // all five attributes
   public let hotkeys: array<ref<HotswapHotkeyWant>>;
   public let missing: array<String>;
   public let refusal: String;
@@ -185,22 +187,33 @@ public abstract class HotswapPlanner {
     return ItemID.IsValid(found) ? found : bag.FindRecord(ItemID.GetTDBID(stored));
   }
 
-  // A part sitting on a piece of cyberware isn't in the inventory, so it needs looking up separately
-  // or every quickhack on the current deck would read as missing.
+  // A part sitting on cyberware or a weapon isn't in the inventory, so it needs looking up separately
+  // or every quickhack on the deck and every mod on a gun would read as missing.
   private static func InstalledParts(ctx: ref<HotswapContext>) -> array<ItemID> {
     let parts: array<ItemID>;
+    let hosts: array<ItemID>;
     let loadout = ctx.equip.GetEquipment();
     for area in loadout.equipAreas {
       if HotswapNames.IsCyberwareArea(area.areaType) {
         for slot in area.equipSlots {
           if ItemID.IsValid(slot.itemID) {
-            let attached = ItemModificationSystem.GetAllSlots(ctx.player, slot.itemID);
-            for part in attached {
-              if Equals(part.status, ESlotState.Taken) {
-                ArrayPush(parts, part.installedPart);
-              }
-            }
+            ArrayPush(hosts, slot.itemID);
           }
+        }
+      }
+    }
+    let list: array<wref<gameItemData>>;
+    ctx.ts.GetItemList(ctx.player, list);
+    for data in list {
+      if IsDefined(data) && RPGManager.IsItemWeapon(data.GetID()) {
+        ArrayPush(hosts, data.GetID());
+      }
+    }
+    for host in hosts {
+      let attached = ItemModificationSystem.GetAllSlots(ctx.player, host);
+      for part in attached {
+        if Equals(part.status, ESlotState.Taken) {
+          ArrayPush(parts, part.installedPart);
         }
       }
     }
@@ -264,19 +277,69 @@ public abstract class HotswapPlanner {
         want.level = wanted[i];
         ArrayPush(plan.perks, want);
       }
+      if wanted[i] > 0 {
+        let target = new HotswapPerkWant();
+        target.perk = perk;
+        target.level = wanted[i];
+        ArrayPush(plan.perkTargets, target);
+      }
       i += 1;
     }
   }
 
+  // A build without a row for an attribute keeps V's current value, which the reset would otherwise
+  // take back to 3.
   private static func AddAttributes(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, const rows: script_ref<array<ref<HotswapEntry>>>) -> Void {
-    for row in Deref(rows) {
-      if row.kind == HotswapKindAttribute() {
-        let stat = HotswapNames.ToStat(row.key);
-        if NotEquals(stat, gamedataStatType.Invalid) && Cast<Int32>(ctx.dev.GetAttributeValue(stat)) != row.value {
-          let want = new HotswapAttributeWant();
-          want.stat = stat;
-          want.value = row.value;
-          ArrayPush(plan.attributes, want);
+    for stat in HotswapNames.Attributes() {
+      let current = Cast<Int32>(ctx.dev.GetAttributeValue(stat));
+      let value = current;
+      for row in Deref(rows) {
+        if row.kind == HotswapKindAttribute() && Equals(HotswapNames.ToStat(row.key), stat) {
+          value = row.value;
+        }
+      }
+      let target = new HotswapAttributeWant();
+      target.stat = stat;
+      target.value = value;
+      ArrayPush(plan.attributeTargets, target);
+      if value != current {
+        let want = new HotswapAttributeWant();
+        want.stat = stat;
+        want.value = value;
+        ArrayPush(plan.attributes, want);
+      }
+    }
+  }
+
+  // Every piece of cyberware comes off before perks change. A slot the build says nothing about, or
+  // whose item V no longer has, gets back what is in it now. A missing item loses its link to the
+  // build's row, so the row still names what the build wants.
+  public static func KeepUnlisted(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> Void {
+    let loadout = ctx.equip.GetEquipment();
+    for area in loadout.equipAreas {
+      if HotswapNames.IsCyberwareArea(area.areaType) {
+        let slot = 0;
+        let count = ArraySize(area.equipSlots);
+        while slot < count {
+          let raw = area.equipSlots[slot].itemID;
+          let now = ItemID.IsValid(raw) ? HotswapGear.Canon(ctx, area.areaType, raw) : ItemID.None();
+          let want = plan.WantAt(area.areaType, slot);
+          if !IsDefined(want) {
+            if ItemID.IsValid(raw) {
+              let keep = new HotswapWant();
+              keep.area = area.areaType;
+              keep.slot = slot;
+              keep.item = now;
+              ArrayPush(plan.gear, keep);
+            }
+          } else {
+            if want.missing {
+              want.entry = null;
+              want.missing = false;
+              want.item = now;
+            }
+          }
+          slot += 1;
         }
       }
     }
@@ -340,13 +403,17 @@ public abstract class HotswapPlanner {
     }
   }
 
-  // The item in the slot holding this host. That can be a generated copy of it.
+  // The item that holds a build's parts. Cyberware is the item in its slot, which can be a generated
+  // copy. A weapon takes mods wherever it is, equipped or not.
   public static func LiveHost(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, host: ItemID) -> ItemID {
     for want in plan.gear {
       if HotswapNames.IsCyberwareArea(want.area) && HotswapGear.Same(want.item, host)
         && HotswapGear.Holds(ctx, want.area, want.slot, host) {
         return HotswapGear.Raw(ctx, want.area, want.slot);
       }
+    }
+    if RPGManager.IsItemWeapon(host) && ctx.ts.HasItem(ctx.player, host) {
+      return host;
     }
     return ItemID.None();
   }

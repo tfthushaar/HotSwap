@@ -20,6 +20,7 @@ public class HotswapDraft {
   public let notes: array<String>;
   public let attributes: String;
   public let perkPoints: Int32;
+  public let mods: Int32;
   public let capacityUsed: Float;
   public let capacityTotal: Float;
 
@@ -52,6 +53,9 @@ public class HotswapDraft {
     text += "\nAttributes: " + this.attributes;
     text += "\nPerks: " + IntToString(this.perkPoints) + " points";
     text += "\nCapacity: " + IntToString(RoundF(this.capacityUsed)) + " / " + IntToString(RoundF(this.capacityTotal));
+    if this.mods > 0 {
+      text += "\nWeapon mods: " + IntToString(this.mods) + " fitted from V's own";
+    }
     if ArraySize(this.notes) > 0 {
       text += "\n" + HotswapText.Join(this.notes);
     }
@@ -63,7 +67,9 @@ public class HotswapDraft {
 // be tens of thousands of lookups on a click, so it is sorted once and shared by all five.
 public class HotswapStock {
   public let cyberware: array<wref<gameItemData>>;
-  public let weapons: array<wref<gameItemData>>;
+  public let weapons: array<wref<gameItemData>>;   // the best copy of each weapon V owns
+  public let parts: array<wref<gameItemData>>;     // weapon mods and attachments not on anything
+  public let maxDps: Float;
   public let programs: array<ItemID>;
   public let perkNames: array<String>;
   public let perkTiers: array<Int32>;
@@ -87,14 +93,21 @@ public class HotswapStock {
           ArrayPush(self.cyberware, data);
         } else {
           if Equals(area, gamedataEquipmentArea.Weapon) {
-            ArrayPush(self.weapons, data);
+            self.OfferWeapon(data);
           } else {
             if Equals(RPGManager.GetItemType(id), gamedataItemType.Prt_Program) {
               ArrayPush(self.programs, id);
+            } else {
+              if Equals(RPGManager.GetItemCategory(id), gamedataItemCategory.Part) {
+                ArrayPush(self.parts, data);
+              }
             }
           }
         }
       }
+    }
+    for data in self.weapons {
+      self.maxDps = MaxF(self.maxDps, data.GetStatValueByType(gamedataStatType.EffectiveDPS));
     }
     // Quickhacks on the current deck count as owned, though they aren't in the inventory.
     let deck = ctx.equip.GetActiveItem(gamedataEquipmentArea.SystemReplacementCW);
@@ -107,6 +120,27 @@ public class HotswapStock {
       }
     }
     return self;
+  }
+
+  // Two copies of the same weapon are one choice, and it is always the higher grade, then the one
+  // that hits harder.
+  private func OfferWeapon(data: wref<gameItemData>) -> Void {
+    let record = ItemID.GetTDBID(data.GetID());
+    let i = 0;
+    while i < ArraySize(this.weapons) {
+      let held = this.weapons[i];
+      if ItemID.GetTDBID(held.GetID()) == record {
+        let grade = HotswapRecommender.QualityRank(RPGManager.GetItemDataQuality(data));
+        let heldGrade = HotswapRecommender.QualityRank(RPGManager.GetItemDataQuality(held));
+        if grade > heldGrade || (grade == heldGrade
+          && data.GetStatValueByType(gamedataStatType.EffectiveDPS) > held.GetStatValueByType(gamedataStatType.EffectiveDPS)) {
+          this.weapons[i] = data;
+        }
+        return;
+      }
+      i += 1;
+    }
+    ArrayPush(this.weapons, data);
   }
 }
 
@@ -125,6 +159,7 @@ public class HotswapKit {
   public let launcher: Bool;    // Projectile Launch System
   public let arms: Bool;        // any arms cyberware
   public let camo: Bool;        // Optical Camo
+  public let silent: Bool;      // a silenced weapon, or one V can silence
 }
 
 public class HotswapRecommender {
@@ -138,6 +173,9 @@ public class HotswapRecommender {
   private let m_needs: array<Int32>;          // what that gear requires of each attribute
   private let m_order: array<gamedataStatType>;   // the attributes, in the order this draft favours them
   private let m_attributes: array<Int32>;     // index matches HotswapNames.Attributes()
+  private let m_keepsTinkerer: Bool;          // whether cyberware keeps its Cyberware Tinkerer discount
+  private let m_typeAreas: array<gamedataEquipmentArea>;
+  private let m_types: array<CName>;          // cyberware types placed, one per type in an area
   private let m_levels: array<Int32>;         // perk level by enum index
   private let m_primaryLeft: Int32;
   private let m_relicLeft: Int32;
@@ -387,6 +425,9 @@ public class HotswapRecommender {
         }
       }
     }
+    if this.Quietness(item) > 0.0 {
+      kit.silent = true;
+    }
   }
 
   // The build's main attribute is what makes it this kind of build. After that, V's gear decides.
@@ -461,8 +502,8 @@ public class HotswapRecommender {
       points = this.Raise(this.m_order[order[i]], tiers[i], points);
       i += 1;
     }
-    // Whatever is left goes wherever there is still room.
-    for stat in stats {
+    // Whatever is left goes wherever there is still room, in the order the gear asks for.
+    for stat in this.m_order {
       points = this.Raise(stat, 20, points);
     }
     i = 0;
@@ -564,7 +605,7 @@ public class HotswapRecommender {
     if StrBeginsWith(name, "Body_Left") { return kit.heavy; }
     if StrBeginsWith(name, "Body_Right") { return kit.blunt; }
     if StrBeginsWith(name, "Cool_Left") { return kit.precise; }
-    if StrBeginsWith(name, "Cool_Right") { return kit.thrown; }
+    if StrBeginsWith(name, "Cool_Right") { return kit.thrown || kit.silent; }
     if StrBeginsWith(name, "Reflexes_Left") { return kit.automatic; }
     if StrBeginsWith(name, "Reflexes_Right") { return kit.blades; }
     if StrBeginsWith(name, "Intelligence_Left") || StrBeginsWith(name, "Intelligence_Central") { return kit.deck; }
@@ -680,13 +721,14 @@ public class HotswapRecommender {
 
   // ---- Items -----------------------------------------------------------------------------------
 
-  private static func Rank(data: wref<gameItemData>) -> Float {
+  // Grade decides. Being iconic only settles a tie between two pieces of the same grade.
+  public static func Rank(data: wref<gameItemData>) -> Float {
     let rank = HotswapRecommender.QualityRank(RPGManager.GetItemDataQuality(data));
-    return RPGManager.IsItemIconic(data) ? rank + 1.0 : rank;
+    return RPGManager.IsItemIconic(data) ? rank + 0.25 : rank;
   }
 
   // The enum runs alphabetically, so its order says nothing about which is better.
-  private static func QualityRank(quality: gamedataQuality) -> Float {
+  public static func QualityRank(quality: gamedataQuality) -> Float {
     let rank: Float;
     switch quality {
       case gamedataQuality.Common:
@@ -806,10 +848,88 @@ public class HotswapRecommender {
     if RPGManager.IsItemAdaptiveStemCells(ItemID.GetTDBID(item)) && this.LevelOf(gamedataNewPerkType.Tech_Central_Perk_3_3) == 0 {
       return false;
     }
-    if this.m_used + HotswapGear.Capacity(this.m_ctx, item) > this.m_budget {
+    // EquipItem takes off anything of the same cyberware type in the area. Two of a kind, like an
+    // iconic and its ordinary version, would knock each other off.
+    if this.TypeTaken(area, this.Type(item)) {
+      return false;
+    }
+    if this.m_used + this.DraftCost(item) > this.m_budget + HotswapRecommender.BoosterCapacity(this.m_ctx, item) {
       return false;
     }
     return this.MeetsRequirements(data);
+  }
+
+  private func TypeTaken(area: gamedataEquipmentArea, type: CName) -> Bool {
+    let i = 0;
+    while i < ArraySize(this.m_types) {
+      if Equals(this.m_typeAreas[i], area) && Equals(this.m_types[i], type) {
+        return true;
+      }
+      i += 1;
+    }
+    return false;
+  }
+
+  // ---- Capacity ----------------------------------------------------------------------------------
+
+  // What a piece costs once this draft's perks are bought. Cyberware Tinkerer takes a point off some
+  // pieces, and each of those carries the discount as a stat, so its cost without the perk is known.
+  // A draft that keeps the perk at the level V has keeps the discount.
+  private func DraftCost(item: ItemID) -> Float {
+    let data = this.m_ctx.ItemData(item);
+    if !IsDefined(data) {
+      return 0.0;
+    }
+    let cost = data.GetStatValueByType(gamedataStatType.HumanityAllocated);
+    if !this.m_keepsTinkerer {
+      cost += data.GetStatValueByType(gamedataStatType.Tech_Central_Milestone_2_Discount);
+    }
+    return cost;
+  }
+
+  // A capacity booster raises capacity by the game's own curve of its CapacityBoosterHumanity.
+  public static func BoosterCapacity(ctx: ref<HotswapContext>, item: ItemID) -> Float {
+    let data = ctx.ItemData(item);
+    if !IsDefined(data) || !data.HasTag(n"CapacityBooster") {
+      return 0.0;
+    }
+    let level = data.GetStatValueByType(gamedataStatType.CapacityBoosterHumanity);
+    return GameInstance.GetStatsDataSystem(ctx.game).GetValueFromCurve(n"cyberware_curves", level, n"capacity_booster_to_humanity");
+  }
+
+  // The capacity V will have once this draft's perks are bought, which is what EquipItem checks
+  // against (HumanityAllocationPrereq). From V's capacity now, it takes out what V's perks and boosters
+  // give, and puts back what the draft's will. Driver Update gives a fixed amount for each attribute
+  // at 9 or more, and its size per attribute is read from what V gets now. Where V has nothing to read
+  // it from, nothing is counted: a build under budget beats one that won't go on.
+  private func DraftCapacity() -> Float {
+    let ctx = this.m_ctx;
+    let capacity = ctx.Stat(gamedataStatType.Humanity) - ctx.Stat(gamedataStatType.Tech_Central_Perk_2_2_Humanity);
+    let systems = ctx.equip.GetNumberOfSlots(gamedataEquipmentArea.SystemReplacementCW, true);
+    let slot = 0;
+    while slot < systems {
+      capacity -= HotswapRecommender.BoosterCapacity(ctx, HotswapGear.Raw(ctx, gamedataEquipmentArea.SystemReplacementCW, slot));
+      slot += 1;
+    }
+    if this.LevelOf(gamedataNewPerkType.Tech_Central_Perk_2_2) > 0 {
+      let now = 0;
+      let then = 0;
+      for stat in HotswapNames.Attributes() {
+        if ctx.dev.GetAttributeValue(stat) >= 9.0 {
+          now += 1;
+        }
+        if this.Attribute(stat) >= 9 {
+          then += 1;
+        }
+      }
+      if now > 0 {
+        capacity += ctx.Stat(gamedataStatType.Tech_Central_Perk_2_2_Humanity) / Cast<Float>(now) * Cast<Float>(then);
+      }
+    }
+    if this.LevelOf(gamedataNewPerkType.Tech_Master_Perk_3) > 0 {
+      capacity += ctx.Stat(gamedataStatType.Tech_Master_Perk_3_Humanity);
+    }
+    return capacity;
   }
 
   // The best piece for a slot. wanted limits it to a list of cyberware types, if given.
@@ -831,7 +951,10 @@ public class HotswapRecommender {
 
   private func Place(area: gamedataEquipmentArea, slot: Int32, item: ItemID) -> Void {
     this.m_bag.Claim(item);
-    this.m_used += HotswapGear.Capacity(this.m_ctx, item);
+    this.m_used += this.DraftCost(item);
+    this.m_budget += HotswapRecommender.BoosterCapacity(this.m_ctx, item);
+    ArrayPush(this.m_typeAreas, area);
+    ArrayPush(this.m_types, this.Type(item));
     this.m_draft.Add(HotswapKindGear(), HotswapNames.OfArea(area), slot, item);
     this.m_picks += 1;
     if this.OrderRank(this.Attunement(item)) >= 0 {
@@ -847,7 +970,7 @@ public class HotswapRecommender {
   private func KeepParts(live: ItemID, named: ItemID) -> Void {
     let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, live);
     for slot in slots {
-      if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(slot.slotID, slot.innerItemData) {
+      if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(live, slot.slotID, slot.innerItemData) {
         this.m_draft.AddPart(named, slot.slotID, slot.installedPart);
       }
     }
@@ -857,14 +980,11 @@ public class HotswapRecommender {
     this.m_draft.Add(HotswapKindGear(), HotswapNames.OfArea(area), slot, ItemID.None());
   }
 
-  private func Bonus(stat: gamedataStatType) -> Float {
-    return this.m_ctx.Stat(stat);
-  }
-
-  // Capacity that comes from a perk may not be there after the swap, so the budget leaves it out. A
-  // build is better off under budget than refused when it applies.
+  // Perks are settled by now, so capacity and costs are worked out for the draft's own perks.
   private func ChooseCyberware() -> Void {
-    this.m_budget = this.Bonus(gamedataStatType.Humanity) - this.Bonus(gamedataStatType.Tech_Central_Perk_2_2_Humanity);
+    let tinkerer = gamedataNewPerkType.Tech_Central_Milestone_2;
+    this.m_keepsTinkerer = this.LevelOf(tinkerer) >= this.m_ctx.dev.IsNewPerkBought(tinkerer);
+    this.m_budget = this.DraftCapacity();
 
     // Eyes never change here, so what they cost has to be counted.
     let eyes = 0;
@@ -873,7 +993,7 @@ public class HotswapRecommender {
       let item = HotswapGear.Raw(this.m_ctx, gamedataEquipmentArea.EyesCW, eyes);
       if ItemID.IsValid(item) {
         this.m_bag.Claim(item);
-        this.m_used += HotswapGear.Capacity(this.m_ctx, item);
+        this.m_used += this.DraftCost(item);
       }
       eyes += 1;
     }
@@ -976,9 +1096,12 @@ public class HotswapRecommender {
       ArrayPush(this.m_draft.uses, HotswapGear.DisplayName(this.m_ctx, item));
       return;
     }
-    let current = HotswapGear.Raw(this.m_ctx, area, 0);
+    // No arms this build wants: V keeps the arms on now, and the build says so.
+    let current = HotswapGear.Canon(this.m_ctx, area, HotswapGear.Raw(this.m_ctx, area, 0));
     if ItemID.IsValid(current) {
-      this.m_used += HotswapGear.Capacity(this.m_ctx, current);
+      this.m_bag.Claim(current);
+      this.m_used += this.DraftCost(current);
+      this.m_draft.Add(HotswapKindGear(), HotswapNames.OfArea(area), 0, current);
     }
   }
 
@@ -1046,17 +1169,73 @@ public class HotswapRecommender {
 
   // ---- Weapons ---------------------------------------------------------------------------------
 
+  // What a weapon is for the build matters most: its kind, its tech, and for a quiet build whether it
+  // is silenced. Damage and grade only choose between weapons that suit it equally. Raw damage alone
+  // would hand a stealth build the loudest gun V owns.
   private func WeaponScore(item: ItemID, data: wref<gameItemData>) -> Float {
     let record = TweakDBInterface.GetWeaponItemRecord(ItemID.GetTDBID(item));
     if !IsDefined(record) {
       return 0.0;
     }
     let evolution = IsDefined(record.Evolution()) ? record.Evolution().Type() : gamedataWeaponEvolution.Invalid;
-    let affinity = this.m_type.WeaponAffinity(RPGManager.GetItemType(item), evolution);
-    if affinity <= 0.0 {
+    let fit = this.m_type.WeaponFit(RPGManager.GetItemType(item), evolution, this.Quietness(item));
+    if fit <= 0.0 {
       return 0.0;
     }
-    return affinity * (data.GetStatValueByType(gamedataStatType.EffectiveDPS) + HotswapRecommender.Rank(data) * 10.0);
+    let dps = this.m_stock.maxDps > 0.0 ? data.GetStatValueByType(gamedataStatType.EffectiveDPS) / this.m_stock.maxDps : 0.0;
+    return fit * 100.0 + dps * 25.0 + HotswapRecommender.Rank(data) * 2.0;
+  }
+
+  // 1 for a silenced weapon: built in (the record's Silenced tag) or with a silencer on its muzzle. A
+  // bit less for one that takes a silencer V owns, since the build will fit it.
+  private func Quietness(item: ItemID) -> Float {
+    let data = this.m_ctx.ItemData(item);
+    if IsDefined(data) && data.HasTag(n"Silenced") {
+      return 1.0;
+    }
+    let muzzle = t"AttachmentSlots.PowerModule";
+    let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, item);
+    for slot in slots {
+      if slot.slotID == muzzle {
+        if Equals(slot.status, ESlotState.Taken) && HotswapRecommender.IsSilencer(slot.installedPart) {
+          return 1.0;
+        }
+        for part in this.m_stock.parts {
+          if HotswapRecommender.IsSilencer(part.GetID()) && HotswapRecommender.WeaponLists(item, muzzle, ItemID.GetTDBID(part.GetID())) {
+            return 0.8;
+          }
+        }
+      }
+    }
+    return 0.0;
+  }
+
+  public static func IsSilencer(part: ItemID) -> Bool {
+    let record = RPGManager.GetItemRecord(part);
+    return IsDefined(record) && record.TagsContains(n"Silenced");
+  }
+
+  // Scopes and muzzles only go on the weapons whose record lists them for that slot, as the game's own
+  // mod screen checks (GetPlayerInventoryPartsForItemRef).
+  public static func WeaponLists(weapon: ItemID, slot: TweakDBID, part: TweakDBID) -> Bool {
+    let record = TweakDBInterface.GetWeaponItemRecord(ItemID.GetTDBID(weapon));
+    if !IsDefined(record) {
+      return false;
+    }
+    let lists: array<wref<SlotItemPartListElement_Record>>;
+    record.SlotPartList(lists);
+    for list in lists {
+      if IsDefined(list.Slot()) && list.Slot().GetID() == slot {
+        let entries: array<wref<ItemPartListElement_Record>>;
+        list.ItemPartList(entries);
+        for entry in entries {
+          if IsDefined(entry.Item()) && entry.Item().GetID() == part {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   // A draft has its own attributes, so V's current ones say nothing about what it can wield. While
@@ -1108,11 +1287,190 @@ public class HotswapRecommender {
       ArrayPush(this.m_draft.uses, HotswapGear.DisplayName(this.m_ctx, item));
       slot += 1;
     }
+    this.ChooseMods(picks);
     for left in [EnumInt(WeaponSlot.LeftSlot_1), EnumInt(WeaponSlot.LeftSlot_2), EnumInt(WeaponSlot.LeftSlot_3)] {
       if HotswapGear.SlotExists(this.m_ctx, area, left) {
         this.PlaceEmpty(area, left);
       }
     }
     this.m_fitWeapons = (ArraySize(picks) * 35) / 3;
+  }
+
+  // ---- Weapon mods ------------------------------------------------------------------------------
+
+  // Each mod slot on the build's weapons gets the best mod V has for it: loose in the inventory, or
+  // already on one of these weapons. A mod on a weapon the build doesn't use stays where it is.
+  private func ChooseMods(const picks: script_ref<array<ItemID>>) -> Void {
+    let pool: array<ItemID>;
+    for data in this.m_stock.parts {
+      ArrayPush(pool, data.GetID());
+    }
+    for weapon in Deref(picks) {
+      let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, weapon);
+      for slot in slots {
+        if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(weapon, slot.slotID, slot.innerItemData) {
+          ArrayPush(pool, slot.installedPart);
+        }
+      }
+    }
+    let taken: array<ItemID>;
+    for weapon in Deref(picks) {
+      let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, weapon);
+      for slot in slots {
+        if HotswapGear.IsTrackedPart(weapon, slot.slotID, slot.innerItemData) {
+          let here = Equals(slot.status, ESlotState.Taken) ? slot.installedPart : ItemID.None();
+          let best = ItemID.None();
+          let bestScore = 0.0;
+          for part in pool {
+            if !ArrayContains(taken, part) && this.ModFits(weapon, part, slot.slotID, part == here) {
+              let score = this.ModScore(part);
+              if score > bestScore {
+                bestScore = score;
+                best = part;
+              }
+            }
+          }
+          if ItemID.IsValid(best) {
+            ArrayPush(taken, best);
+            this.m_draft.AddPart(weapon, slot.slotID, best);
+            this.m_draft.mods += 1;
+          }
+        }
+      }
+    }
+  }
+
+  // The game's own rules for a mod on a weapon: the mod lists the slot as a place it goes, scopes and
+  // muzzles must be listed by the weapon, and a mod can't be of a higher grade than the weapon. A mod
+  // already in that slot is allowed to stay where it is.
+  private func ModFits(weapon: ItemID, part: ItemID, slot: TweakDBID, alreadyThere: Bool) -> Bool {
+    if alreadyThere {
+      return true;
+    }
+    let record = RPGManager.GetItemRecord(part);
+    if !IsDefined(record) {
+      return false;
+    }
+    let placements: array<wref<AttachmentSlot_Record>>;
+    record.PlacementSlots(placements);
+    let placed = false;
+    for placement in placements {
+      if placement.GetID() == slot {
+        placed = true;
+      }
+    }
+    if !placed {
+      return false;
+    }
+    if (slot == t"AttachmentSlots.PowerModule" || slot == t"AttachmentSlots.Scope")
+      && !HotswapRecommender.WeaponLists(weapon, slot, ItemID.GetTDBID(part)) {
+      return false;
+    }
+    let weaponData = this.m_ctx.ItemData(weapon);
+    let chimera = Equals(TweakDBInterface.GetCName(ItemID.GetTDBID(part) + t".modType", n""), n"chimera_mod");
+    if !chimera && IsDefined(weaponData)
+      && this.PartGrade(part) > HotswapRecommender.QualityRank(RPGManager.GetItemDataQuality(weaponData)) {
+      return false;
+    }
+    return true;
+  }
+
+  private func PartGrade(part: ItemID) -> Float {
+    let data = this.m_ctx.ItemData(part);
+    if IsDefined(data) {
+      return HotswapRecommender.QualityRank(RPGManager.GetItemDataQuality(data));
+    }
+    let record = RPGManager.GetItemRecord(part);
+    if IsDefined(record) && IsDefined(record.Quality()) {
+      let rank = HotswapRecommender.QualityRank(record.Quality().Type());
+      if rank > 0.0 {
+        return rank;
+      }
+    }
+    return 3.0;
+  }
+
+  // A mod's worth to this build: its grade, and what it changes, read from the stats on its record.
+  // Each kind of effect counts once, so a mod isn't worth more for listing more stats. A silencer is
+  // worth a lot to a quiet build and less than nothing to a loud one.
+  private func ModScore(part: ItemID) -> Float {
+    let record = RPGManager.GetItemRecord(part);
+    if !IsDefined(record) {
+      return 0.0;
+    }
+    let score = 1.0 + this.PartGrade(part) * 2.0;
+    let stats: array<wref<StatModifier_Record>>;
+    record.StatModifiers(stats);
+    let packages: array<wref<GameplayLogicPackage_Record>>;
+    record.OnAttach(packages);
+    for package in packages {
+      let more: array<wref<StatModifier_Record>>;
+      package.Stats(more);
+      for stat in more {
+        ArrayPush(stats, stat);
+      }
+    }
+    let counted: array<Int32>;
+    for stat in stats {
+      if IsDefined(stat) && IsDefined(stat.StatType()) {
+        let kind = HotswapRecommender.EffectKind(stat.StatType().StatType());
+        if kind >= 0 && !ArrayContains(counted, kind) {
+          ArrayPush(counted, kind);
+          score += this.Interest(kind);
+        }
+      }
+    }
+    if record.TagsContains(n"Silenced") {
+      score += this.m_type.wants.quiet * 3.0;
+    }
+    return score;
+  }
+
+  // The kind of effect a stat is, by the name the game gives it.
+  private static func EffectKind(stat: gamedataStatType) -> Int32 {
+    let name = NameToString(EnumValueToName(n"gamedataStatType", Cast<Int64>(EnumInt(stat))));
+    if StrContains(name, "Crit") || StrContains(name, "Headshot") {
+      return 0;
+    }
+    if StrContains(name, "Range") || StrContains(name, "Zoom") {
+      return 1;
+    }
+    if StrContains(name, "Reload") || StrContains(name, "Magazine") || StrContains(name, "Recoil")
+      || StrContains(name, "Spread") || StrContains(name, "Aim") || StrContains(name, "Sway") || StrContains(name, "Handling") {
+      return 2;
+    }
+    if StrContains(name, "Smart") {
+      return 3;
+    }
+    if StrContains(name, "Charge") {
+      return 4;
+    }
+    if StrContains(name, "AttackSpeed") || StrContains(name, "Stamina") || StrContains(name, "Bleed") {
+      return 5;
+    }
+    if StrContains(name, "Damage") || StrContains(name, "Penetration") || StrContains(name, "Armor") {
+      return 6;
+    }
+    return -1;
+  }
+
+  private func Interest(kind: Int32) -> Float {
+    let wants = this.m_type.wants;
+    switch kind {
+      case 0:
+        return wants.crit;
+      case 1:
+        return wants.range;
+      case 2:
+        return wants.handling;
+      case 3:
+        return wants.smart;
+      case 4:
+        return wants.charge;
+      case 5:
+        return wants.melee;
+      default:
+        return wants.damage;
+    }
   }
 }
