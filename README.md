@@ -37,17 +37,25 @@ attributes change by hand. Hovering a build shows what would change.
 
 ### Recommended builds
 
-Each slot offers five builds made from what V owns: **Netrunner**, **Blade Dancer**, **Juggernaut**,
-**Ghost** and **Techie**, with the best fit for V's gear first. Hover one to read it, and click it to
-create and save it into the slot. Creating a build doesn't change V. Switch to it when you're ready.
+Each slot offers five kinds of build: **Netrunner**, **Blade Dancer**, **Juggernaut**, **Ghost** and
+**Techie**, with the best fit for V first. None of them is a preset. Each is worked out from what V
+owns at that moment: the guns and cyberware that suit it, then attributes and perks chosen to serve
+that gear, using the points V has earned. Two players with different inventories get different
+builds.
 
-Items in the stash don't count.
+Hover one to read it. **One click saves it and switches V to it**: attributes, perks, cyberware,
+quickhacks and weapons, with no ripperdoc.
+
+A build that can't work at all, like a Netrunner with no cyberdeck, is greyed out and says what's
+missing. Items in the stash don't count.
 
 ### Making your own builds
 
 Hotswap also removes two limits, so the game's own screens work as a build editor:
 
-- **Reset Attributes**, on the Character screen, can be used as often as you like.
+- **Reset Attributes**, on the Character screen, can be used as often as you like. If V's cyberware
+  needs perks the reset removes, Hotswap says which pieces have to come off and takes them off for
+  you. They stay in V's inventory.
 - **The Cyberware screen** can equip and remove cyberware V owns, from anywhere. Buying and upgrading
   still happen at a ripperdoc.
 
@@ -55,8 +63,8 @@ Hotswap also removes two limits, so the game's own screens work as a build edito
 
 Builds can't be changed in combat if they touch perks or attributes, during locked story moments, or
 while Sandevistan, Berserk or optical camo is running. If something in a build is gone, a popup says
-what and asks first. If a swap fails partway, everything goes back to how it was. Saving is blocked
-while a swap runs.
+what and asks first. If a swap fails partway, V is put back as they were, and anything that didn't
+go back is named. Saving is blocked while a swap runs.
 
 Builds belong to the save they were made in. Uninstalling leaves V in whatever build they have on.
 

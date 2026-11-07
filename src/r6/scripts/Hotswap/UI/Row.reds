@@ -131,7 +131,7 @@ public class HotswapRow {
     for slot in this.m_slots {
       let filled = i < ArraySize(this.m_drafts);
       slot.HotswapText(filled ? this.m_drafts[i].letter : "");
-      slot.Update(filled, false);
+      slot.Update(filled ? StrLen(this.m_drafts[i].blocker) == 0 : false, false);
       i += 1;
     }
     this.m_label.SetText(HotswapText.RecommendLabel(this.m_target));
@@ -209,7 +209,10 @@ public class HotswapRow {
   private func ShowHints(index: Int32) -> Void {
     this.ClearHints();
     if Equals(this.m_mode, HotswapRowMode.Recommend) {
-      this.m_hints.AddButtonHint(n"click", HotswapText.HintCreate());
+      let usable = index < ArraySize(this.m_drafts) ? StrLen(this.m_drafts[index].blocker) == 0 : false;
+      if usable {
+        this.m_hints.AddButtonHint(n"click", HotswapText.HintCreate());
+      }
       this.m_hints.AddButtonHint(n"unequip_item", HotswapText.HintBack());
       return;
     }
@@ -360,13 +363,28 @@ public class HotswapRow {
       return;
     }
     let draft = this.m_drafts[index];
+    if StrLen(draft.blocker) > 0 {
+      this.Tell(draft.name, draft.blocker);
+      return;
+    }
     if sys.IsUsed(this.m_target) {
       this.m_popupDraft = draft;
       this.Confirm(HotswapPopup.ConfirmReplace, this.m_target, HotswapText.ReplaceTitle(), HotswapText.ReplaceBody(sys.GetName(this.m_target), draft.name));
       return;
     }
-    sys.SaveDraft(this.m_target, draft);
+    this.Adopt(draft);
+  }
+
+  // A recommended build is saved and put on in one click. Everything that can stop a switch still
+  // applies, and says why, and the build stays saved for when it can go ahead.
+  private func Adopt(draft: ref<HotswapDraft>) -> Void {
+    let sys = this.System();
+    let slot = this.m_target;
+    if !IsDefined(sys) || !sys.SaveDraft(slot, draft) {
+      return;
+    }
     this.LeaveRecommend();
+    this.Switch(slot);
   }
 
   // ---- Popups ----------------------------------------------------------------------------------
@@ -442,8 +460,7 @@ public class HotswapRow {
         break;
       case HotswapPopup.ConfirmReplace:
         if yes && IsDefined(this.m_popupDraft) {
-          sys.SaveDraft(slot, this.m_popupDraft);
-          this.LeaveRecommend();
+          this.Adopt(this.m_popupDraft);
         }
         this.m_popupDraft = null;
         break;

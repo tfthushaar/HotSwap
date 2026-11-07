@@ -44,6 +44,7 @@ public class HotswapPlan {
   public let hotkeys: array<ref<HotswapHotkeyWant>>;
   public let missing: array<String>;
   public let refusal: String;
+  public let free: Bool;                                      // no cooldown and no fee
 
   public let changedCyberware: Int32;
   public let changedParts: Int32;
@@ -317,11 +318,10 @@ public abstract class HotswapPlanner {
     let total = ctx.Stat(gamedataStatType.Humanity) + ctx.Stat(gamedataStatType.Tech_Master_Perk_3_Humanity);
     let used = ctx.Stat(gamedataStatType.HumanityAllocated);
     for want in plan.gear {
-      let current = HotswapGear.Current(ctx, want.area, want.slot);
-      if !want.missing && !HotswapGear.Same(current, want.item) {
+      if !want.missing && !HotswapGear.Holds(ctx, want.area, want.slot, want.item) {
         if HotswapNames.IsCyberwareArea(want.area) {
           plan.changedCyberware += 1;
-          used += HotswapGear.Capacity(ctx, want.item) - HotswapGear.Capacity(ctx, current);
+          used += HotswapGear.Capacity(ctx, want.item) - HotswapGear.Capacity(ctx, HotswapGear.Raw(ctx, want.area, want.slot));
         } else {
           if Equals(want.area, gamedataEquipmentArea.Weapon) {
             plan.changedWeapons += 1;
@@ -343,11 +343,9 @@ public abstract class HotswapPlanner {
   // The item in the slot holding this host. That can be a generated copy of it.
   public static func LiveHost(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, host: ItemID) -> ItemID {
     for want in plan.gear {
-      if HotswapNames.IsCyberwareArea(want.area) && HotswapGear.Same(want.item, host) {
-        let raw = HotswapGear.Raw(ctx, want.area, want.slot);
-        if HotswapGear.Same(HotswapGear.Canon(ctx, want.area, raw), host) {
-          return raw;
-        }
+      if HotswapNames.IsCyberwareArea(want.area) && HotswapGear.Same(want.item, host)
+        && HotswapGear.Holds(ctx, want.area, want.slot, host) {
+        return HotswapGear.Raw(ctx, want.area, want.slot);
       }
     }
     return ItemID.None();
@@ -395,13 +393,15 @@ public abstract class HotswapGuards {
         return HotswapText.InCombat();
       }
     }
-    let wait = sys.CooldownLeft();
-    if wait > 0.0 {
-      return HotswapText.Cooldown(CeilF(wait));
-    }
-    let cost = sys.GetSettings().eddieCost;
-    if cost > 0 && ctx.ts.GetItemQuantity(player, MarketSystem.Money()) < cost {
-      return HotswapText.CantAfford(cost);
+    if !plan.free {
+      let wait = sys.CooldownLeft();
+      if wait > 0.0 {
+        return HotswapText.Cooldown(CeilF(wait));
+      }
+      let cost = sys.GetSettings().eddieCost;
+      if cost > 0 && ctx.ts.GetItemQuantity(player, MarketSystem.Money()) < cost {
+        return HotswapText.CantAfford(cost);
+      }
     }
     return plan.refusal;
   }

@@ -222,7 +222,7 @@ public class HotswapApply {
     this.ClearOutgoing(true);
     let arms = this.m_plan.WantAt(gamedataEquipmentArea.ArmsCW, 0);
     if IsDefined(arms) && !arms.missing
-      && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, arms.area, arms.slot), arms.item)
+      && !HotswapGear.Holds(this.m_ctx, arms.area, arms.slot, arms.item)
       && HotswapGear.NeedsStyleCleared(this.m_ctx, arms.item) {
       HotswapGear.ClearArmStyle(this.m_ctx);
     }
@@ -242,7 +242,7 @@ public class HotswapApply {
       return;
     }
     let raw = HotswapGear.Raw(this.m_ctx, area, slot);
-    if !ItemID.IsValid(raw) || HotswapGear.Same(HotswapGear.Canon(this.m_ctx, area, raw), keep) {
+    if !ItemID.IsValid(raw) || HotswapGear.Holds(this.m_ctx, area, slot, keep) {
       return;
     }
     if NotEquals(HotswapGear.IsBooster(this.m_ctx, raw), boosters) {
@@ -322,7 +322,7 @@ public class HotswapApply {
     for want in this.m_plan.gear {
       if HotswapNames.IsCyberwareArea(want.area) && !want.missing && ItemID.IsValid(want.item)
         && Equals(HotswapGear.IsBooster(this.m_ctx, want.item), boosters)
-        && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item) {
+        && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
         if HotswapGear.IsLocked(this.m_ctx, want.area, want.slot) {
           HSLog(s"Slot \(want.slot) of \(HotswapNames.OfArea(want.area)) is locked");
         } else {
@@ -336,7 +336,7 @@ public class HotswapApply {
     for want in this.m_plan.gear {
       if HotswapNames.IsCyberwareArea(want.area) && !want.missing && ItemID.IsValid(want.item)
         && !HotswapGear.IsLocked(this.m_ctx, want.area, want.slot)
-        && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item) {
+        && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
         return false;
       }
     }
@@ -413,7 +413,7 @@ public class HotswapApply {
   private func IsWeaponDirty(slot: Int32) -> Bool {
     let want = this.m_plan.WantAt(gamedataEquipmentArea.Weapon, slot);
     return IsDefined(want) && !want.missing
-      && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item);
+      && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item);
   }
 
   // Taking off a right-hand weapon moves the left-hand one into its slot (UnequipItem). So if either
@@ -463,7 +463,7 @@ public class HotswapApply {
     for want in this.m_plan.gear {
       if Equals(want.area, gamedataEquipmentArea.Weapon) && !want.missing && ItemID.IsValid(want.item)
         && Equals(this.IsLeftSlot(want.slot), left)
-        && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item) {
+        && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
         if left && !this.CanDualWield(want) {
           ArrayPush(this.m_problems, HotswapGear.DisplayName(this.m_ctx, want.item));
         } else {
@@ -481,7 +481,7 @@ public class HotswapApply {
   private func WeaponsLanded() -> Bool {
     for want in this.m_plan.gear {
       if Equals(want.area, gamedataEquipmentArea.Weapon) && !want.missing && ItemID.IsValid(want.item)
-        && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item) {
+        && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
         if !this.IsLeftSlot(want.slot) || this.CanDualWield(want) {
           return false;
         }
@@ -494,7 +494,7 @@ public class HotswapApply {
 
   private func QueueQuick() -> Void {
     for want in this.m_plan.gear {
-      if !want.missing && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item) {
+      if !want.missing && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
         if Equals(want.area, gamedataEquipmentArea.CyberwareWheel) {
           HotswapGear.QueueWheel(this.m_ctx, want.item, want.slot);
         }
@@ -521,8 +521,10 @@ public class HotswapApply {
   private func Finish() -> Void {
     let failed: array<String>;
     for want in this.m_plan.gear {
-      if !want.missing && !HotswapGear.Same(HotswapGear.Current(this.m_ctx, want.area, want.slot), want.item) {
-        let name = HotswapGear.DisplayName(this.m_ctx, want.item);
+      if !want.missing && !HotswapGear.Holds(this.m_ctx, want.area, want.slot, want.item) {
+        let raw = HotswapGear.Raw(this.m_ctx, want.area, want.slot);
+        let name = HotswapGear.DisplayName(this.m_ctx, ItemID.IsValid(want.item) ? want.item : raw);
+        HSLog(s"Slot \(want.slot) of \(HotswapNames.OfArea(want.area)) holds \(TDBID.ToStringDEBUG(ItemID.GetTDBID(raw))), wanted \(TDBID.ToStringDEBUG(ItemID.GetTDBID(want.item)))");
         if HotswapNames.IsCyberwareArea(want.area) && !HotswapGear.IsLocked(this.m_ctx, want.area, want.slot) {
           ArrayPush(failed, name);
         } else {
@@ -537,14 +539,24 @@ public class HotswapApply {
         ArrayPush(failed, NameToString(HotswapNames.OfStat(want.stat)));
       }
     }
-    if ArraySize(failed) > 0 && !this.m_isUndo {
-      this.Fail(HotswapText.DidNotLand(failed));
-      return;
+    if ArraySize(failed) > 0 {
+      if !this.m_isUndo {
+        this.Fail(HotswapText.DidNotLand(failed));
+        return;
+      }
+      // There is nothing further back to go to, so what didn't come back is what gets reported.
+      for name in failed {
+        if !ArrayContains(this.m_problems, name) {
+          ArrayPush(this.m_problems, name);
+        }
+      }
     }
 
     if !this.m_isUndo {
       this.KeepResolvedItems();
-      this.Charge();
+      if !this.m_plan.free {
+        this.Charge();
+      }
     }
 
     let report = new HotswapReport();
@@ -593,6 +605,8 @@ public class HotswapApply {
     }
     this.m_reason = reason;
     this.m_isUndo = true;
+    // From here on, problems are what the undo couldn't restore.
+    ArrayClear(this.m_problems);
     this.m_stripped = false;
     this.m_plan = HotswapPlanner.Make(this.m_ctx, sys, HotswapUndoBuild());
     this.Enter(HotswapStage.CyberOff);

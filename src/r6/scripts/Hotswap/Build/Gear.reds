@@ -20,9 +20,19 @@ public abstract class HotswapGear {
     return ctx.equip.GetItemInEquipSlot(area, slot);
   }
 
-  // What a slot holds, seen the way a build sees it. A perk can replace a musculoskeletal item with a
-  // generated copy (powerUpCyberwareEffector). The copy comes and goes with the perk, so a build
-  // always talks about the original, and the two have to compare as the same thing.
+  // With Tech_Central_Milestone_3 at level 3 the game replaces each skeleton item with the copy its
+  // record names as sideUpgradeItem, and puts the original back in the inventory
+  // (PowerUpCyberwareEffector). The copy comes and goes with the perk, so a build always names the
+  // original, and nothing here may compare the two by ID.
+  //
+  // The record is the link between them. GetOriginalItemIDFromSideUpgrade isn't used, because it goes
+  // by tags, quality, cyberware type and stat shard, which is a resemblance and not a link.
+  private static func IsCopyOf(copy: ItemID, original: ItemID) -> Bool {
+    let side: ref<Item_Record>;
+    return RPGManager.CyberwareHasSideUpgrade(original, side) && side.GetID() == ItemID.GetTDBID(copy);
+  }
+
+  // The item a build should name, given one that may be a copy.
   public static func Canon(ctx: ref<HotswapContext>, area: gamedataEquipmentArea, item: ItemID) -> ItemID {
     if !ItemID.IsValid(item) || NotEquals(area, gamedataEquipmentArea.MusculoskeletalSystemCW) {
       return item;
@@ -31,12 +41,28 @@ public abstract class HotswapGear {
     if RPGManager.CyberwareHasSideUpgrade(item, side) {
       return item;
     }
-    let original = ctx.equip.GetOriginalItemIDFromSideUpgrade(item);
-    return ItemID.IsValid(original) ? original : item;
+    let list: array<wref<gameItemData>>;
+    ctx.ts.GetItemList(ctx.player, list);
+    for data in list {
+      if IsDefined(data) && HotswapGear.IsCopyOf(item, data.GetID()) {
+        return data.GetID();
+      }
+    }
+    return item;
   }
 
-  public static func Current(ctx: ref<HotswapContext>, area: gamedataEquipmentArea, slot: Int32) -> ItemID {
-    return HotswapGear.Canon(ctx, area, HotswapGear.Raw(ctx, area, slot));
+  // Whether a slot holds what a build wants there, which an invalid item means is nothing. This is the
+  // only comparison of a slot with a build. Everything that asks goes through here, so nothing can
+  // disagree about what V is wearing.
+  public static func Holds(ctx: ref<HotswapContext>, area: gamedataEquipmentArea, slot: Int32, item: ItemID) -> Bool {
+    let raw = HotswapGear.Raw(ctx, area, slot);
+    if HotswapGear.Same(raw, item) {
+      return true;
+    }
+    if !ItemID.IsValid(raw) || !ItemID.IsValid(item) || NotEquals(area, gamedataEquipmentArea.MusculoskeletalSystemCW) {
+      return false;
+    }
+    return HotswapGear.IsCopyOf(raw, item) || HotswapGear.IsCopyOf(item, raw);
   }
 
   public static func Same(a: ItemID, b: ItemID) -> Bool {

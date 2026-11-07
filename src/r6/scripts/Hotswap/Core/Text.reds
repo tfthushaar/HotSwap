@@ -35,6 +35,9 @@ public abstract class HotswapText {
 
   public static func ReportLine(report: ref<HotswapReport>) -> String {
     if report.rolledBack {
+      if ArraySize(report.problems) > 0 {
+        return "Couldn't switch to " + report.name + ", and these didn't go back: " + HotswapText.Join(report.problems) + ".";
+      }
       return "Couldn't switch to " + report.name + ". V is back as they were.";
     }
     if ArraySize(report.problems) > 0 {
@@ -100,11 +103,24 @@ public abstract class HotswapText {
   public static func HintRename() -> String = "Rename"
   public static func HintClear() -> String = "Clear"
   public static func HintRecommend() -> String = "Recommended builds"
-  public static func HintCreate() -> String = "Create this build"
+  public static func HintCreate() -> String = "Create and switch"
   public static func HintBack() -> String = "Back to builds"
 
   public static func RowLabel() -> String = "Builds"
   public static func RowLabelNamed(name: String) -> String = "Builds: " + name
   public static func RecommendLabel(slot: Int32) -> String = "Recommended for slot " + IntToString(slot + 1)
   public static func DefaultName(slot: Int32) -> String = "Build " + IntToString(slot + 1)
+
+  public static func RequiredMissing(build: String, need: String) -> String {
+    return build + " can't work without " + need + ", and V doesn't own one.";
+  }
+  public static func RequiredUnusable(build: String, need: String, item: String) -> String {
+    return build + " can't work without " + need + ", and V's " + item + " is beyond the capacity or attributes V has.";
+  }
+
+  public static func ResetName() -> String = "Reset"
+  public static func ResetTitle() -> String = "Reset Attributes"
+  public static func ResetBody(const items: script_ref<array<String>>) -> String {
+    return "This cyberware needs perks the reset removes, so it comes off first and stays in V's inventory: " + HotswapText.Join(items) + ".";
+  }
 }

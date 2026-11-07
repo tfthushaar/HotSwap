@@ -1,9 +1,12 @@
 // Hotswap - making a build from what V owns.
 //
 // A draft holds the same rows a saved build does, so once it is saved nothing else in the mod knows
-// where it came from. Every choice is made from live data. Attributes come first because perks need
-// them, perks come second because they decide which slots exist, and cyberware last because it has
-// to meet the requirements of both.
+// where it came from. Nothing in a draft is fixed in advance. The engine starts from what V owns:
+// which of V's weapons, operating system and arms suit this kind of build, and what V's cyberware is
+// attuned to. That kit decides where the attribute points go and which perks are worth buying, using
+// the points V has earned. Attributes come before perks because perks need them, perks before the
+// final choice of gear because they decide which slots exist, and gear last because it has to meet
+// the requirements of both.
 
 public class HotswapDraft {
   public let archetype: Int32;
@@ -11,6 +14,7 @@ public class HotswapDraft {
   public let letter: String;
   public let blurb: String;
   public let fit: Int32;
+  public let blocker: String;   // why this build can't work at all. Empty for nearly every build
   public let rows: array<ref<HotswapEntry>>;
   public let uses: array<String>;
   public let notes: array<String>;
@@ -38,6 +42,9 @@ public class HotswapDraft {
   }
 
   public func Tooltip() -> String {
+    if StrLen(this.blocker) > 0 {
+      return this.blocker;
+    }
     let text = this.blurb + "\nFit for V: " + IntToString(this.fit) + "%";
     if ArraySize(this.uses) > 0 {
       text += "\nUses: " + HotswapText.Join(this.uses);
@@ -103,12 +110,33 @@ public class HotswapStock {
   }
 }
 
+// What a build will carry, read from V's gear. The perks it gets follow from this.
+public class HotswapKit {
+  public let heavy: Bool;       // shotguns and machine guns
+  public let blunt: Bool;       // hammers, clubs and Gorilla Arms
+  public let precise: Bool;     // pistols, revolvers, precision and sniper rifles
+  public let thrown: Bool;      // knives and axes
+  public let automatic: Bool;   // assault rifles and SMGs
+  public let blades: Bool;      // swords and Mantis Blades
+  public let smart: Bool;       // Smart weapons
+  public let charged: Bool;     // Tech weapons
+  public let deck: Bool;        // a cyberdeck
+  public let wires: Bool;       // Monowire
+  public let launcher: Bool;    // Projectile Launch System
+  public let arms: Bool;        // any arms cyberware
+  public let camo: Bool;        // Optical Camo
+}
+
 public class HotswapRecommender {
   private let m_ctx: ref<HotswapContext>;
   private let m_type: ref<HotswapArchetype>;
   private let m_draft: ref<HotswapDraft>;
   private let m_stock: ref<HotswapStock>;
   private let m_bag: ref<HotswapBag>;
+  private let m_kit: ref<HotswapKit>;
+  private let m_demand: array<Float>;         // how much V's gear leans on each attribute
+  private let m_needs: array<Int32>;          // what that gear requires of each attribute
+  private let m_order: array<gamedataStatType>;   // the attributes, in the order this draft favours them
   private let m_attributes: array<Int32>;     // index matches HotswapNames.Attributes()
   private let m_levels: array<Int32>;         // perk level by enum index
   private let m_primaryLeft: Int32;
@@ -151,6 +179,8 @@ public class HotswapRecommender {
     draft.blurb = type.blurb;
     this.m_draft = draft;
 
+    this.Survey();
+    this.OrderAttributes();
     this.SpendAttributes();
     this.SpendPerks();
     this.ChooseCyberware();
@@ -160,7 +190,240 @@ public class HotswapRecommender {
     draft.fit = this.m_fitSystem + this.m_fitArms + this.m_fitWeapons + attuned;
     draft.capacityUsed = this.m_used;
     draft.capacityTotal = this.m_budget;
+    if StrLen(draft.blocker) > 0 {
+      draft.fit = 0;
+    }
     return draft;
+  }
+
+  // ---- What V owns ------------------------------------------------------------------------------
+
+  // Reads the gear this build would be made around, before the attributes that will limit it exist.
+  private func Survey() -> Void {
+    let count = ArraySize(HotswapNames.Attributes());
+    ArrayResize(this.m_demand, count);
+    ArrayResize(this.m_needs, count);
+    this.m_kit = new HotswapKit();
+
+    // Squared so that V's best cyberware speaks for V, and not a drawer of common parts.
+    for data in this.m_stock.cyberware {
+      let id = data.GetID();
+      let rank = HotswapRecommender.Rank(data);
+      this.AddDemand(this.Attunement(id), (rank * rank) / 36.0);
+      if Equals(this.Type(id), n"OpticalCamo") {
+        this.m_kit.camo = true;
+      }
+    }
+
+    let none: array<CName>;
+    let system = this.Strongest(gamedataEquipmentArea.SystemReplacementCW, this.m_type.systems, true);
+    if !ItemID.IsValid(system) {
+      system = this.Strongest(gamedataEquipmentArea.SystemReplacementCW, none, false);
+    }
+    this.NoteSystem(system);
+
+    // A V with no arms this build wants keeps the ones they have, as ChooseArms does.
+    let arms = this.Strongest(gamedataEquipmentArea.ArmsCW, this.m_type.arms, true);
+    if !ItemID.IsValid(arms) {
+      arms = HotswapGear.Raw(this.m_ctx, gamedataEquipmentArea.ArmsCW, 0);
+    }
+    this.NoteArms(arms);
+
+    for kind in [2, 1, 0] {
+      let item = this.BestWeapon(kind, true);
+      if ItemID.IsValid(item) {
+        this.m_bag.Claim(item);
+        this.NoteWeapon(item);
+      }
+    }
+    this.m_bag = new HotswapBag();
+  }
+
+  // The best piece V owns for an area, whatever it requires.
+  private func Strongest(area: gamedataEquipmentArea, const wanted: script_ref<array<CName>>, typed: Bool) -> ItemID {
+    let best = ItemID.None();
+    let bestRank = -1.0;
+    for data in this.m_stock.cyberware {
+      let id = data.GetID();
+      if Equals(EquipmentSystem.GetEquipAreaType(id), area) && (!typed || ArrayContains(Deref(wanted), this.Type(id))) {
+        let rank = HotswapRecommender.Rank(data);
+        if rank > bestRank {
+          bestRank = rank;
+          best = id;
+        }
+      }
+    }
+    return best;
+  }
+
+  private func AddDemand(stat: gamedataStatType, amount: Float) -> Void {
+    let index = this.AttributeIndex(stat);
+    if index >= 0 {
+      this.m_demand[index] += amount;
+    }
+  }
+
+  private func NoteNeeds(item: ItemID) -> Void {
+    let data = this.m_ctx.ItemData(item);
+    if !IsDefined(data) {
+      return;
+    }
+    let requirements = RPGManager.GetEquipRequirements(this.m_ctx.player, data);
+    for need in requirements {
+      let index = this.AttributeIndex(need.statType);
+      if index >= 0 {
+        this.m_needs[index] = Max(this.m_needs[index], CeilF(need.requiredValue));
+      }
+    }
+  }
+
+  private func NoteSystem(item: ItemID) -> Void {
+    if !ItemID.IsValid(item) {
+      return;
+    }
+    this.NoteNeeds(item);
+    if EquipmentSystem.IsItemCyberdeck(item) {
+      this.m_kit.deck = true;
+      this.AddDemand(gamedataStatType.Intelligence, 4.0);
+      return;
+    }
+    let type = this.Type(item);
+    if Equals(type, n"Berserk") {
+      this.AddDemand(gamedataStatType.Strength, 2.0);
+    } else {
+      if Equals(type, n"Sandevistan") {
+        this.AddDemand(gamedataStatType.Reflexes, 2.0);
+      }
+    }
+  }
+
+  private func NoteArms(item: ItemID) -> Void {
+    if !ItemID.IsValid(item) {
+      return;
+    }
+    this.NoteNeeds(item);
+    this.m_kit.arms = true;
+    let type = this.Type(item);
+    if Equals(type, n"NanoWires") {
+      this.m_kit.wires = true;
+      this.AddDemand(gamedataStatType.Intelligence, 3.0);
+    } else {
+      if Equals(type, n"MantisBlades") {
+        this.m_kit.blades = true;
+        this.AddDemand(gamedataStatType.Reflexes, 3.0);
+      } else {
+        if Equals(type, n"StrongArms") {
+          this.m_kit.blunt = true;
+          this.AddDemand(gamedataStatType.Strength, 3.0);
+        } else {
+          if Equals(type, n"ProjectileLauncher") {
+            this.m_kit.launcher = true;
+            this.AddDemand(gamedataStatType.TechnicalAbility, 3.0);
+          }
+        }
+      }
+    }
+  }
+
+  // Which attribute a weapon belongs to is the game's own answer: the skill its kills level up
+  // (RPGManager's combat experience). A weapon's class says what else it leans on.
+  private func NoteWeapon(item: ItemID) -> Void {
+    this.NoteNeeds(item);
+    let kit = this.m_kit;
+    switch RPGManager.GetItemType(item) {
+      case gamedataItemType.Wea_Shotgun:
+      case gamedataItemType.Wea_ShotgunDual:
+      case gamedataItemType.Wea_HeavyMachineGun:
+      case gamedataItemType.Wea_LightMachineGun:
+        kit.heavy = true;
+        this.AddDemand(gamedataStatType.Strength, 3.0);
+        break;
+      case gamedataItemType.Wea_Hammer:
+      case gamedataItemType.Wea_OneHandedClub:
+      case gamedataItemType.Wea_TwoHandedClub:
+        kit.blunt = true;
+        this.AddDemand(gamedataStatType.Strength, 3.0);
+        break;
+      case gamedataItemType.Wea_Rifle:
+      case gamedataItemType.Wea_AssaultRifle:
+      case gamedataItemType.Wea_SubmachineGun:
+        kit.automatic = true;
+        this.AddDemand(gamedataStatType.Reflexes, 3.0);
+        break;
+      case gamedataItemType.Wea_Katana:
+      case gamedataItemType.Wea_Sword:
+      case gamedataItemType.Wea_LongBlade:
+      case gamedataItemType.Wea_ShortBlade:
+      case gamedataItemType.Wea_Chainsword:
+      case gamedataItemType.Wea_Machete:
+        kit.blades = true;
+        this.AddDemand(gamedataStatType.Reflexes, 3.0);
+        break;
+      case gamedataItemType.Wea_Handgun:
+      case gamedataItemType.Wea_Revolver:
+      case gamedataItemType.Wea_SniperRifle:
+      case gamedataItemType.Wea_PrecisionRifle:
+        kit.precise = true;
+        this.AddDemand(gamedataStatType.Cool, 3.0);
+        break;
+      case gamedataItemType.Wea_Knife:
+      case gamedataItemType.Wea_Axe:
+        kit.thrown = true;
+        this.AddDemand(gamedataStatType.Cool, 3.0);
+        break;
+      default:
+        break;
+    }
+    let record = TweakDBInterface.GetWeaponItemRecord(ItemID.GetTDBID(item));
+    if IsDefined(record) && IsDefined(record.Evolution()) {
+      let evolution = record.Evolution().Type();
+      if Equals(evolution, gamedataWeaponEvolution.Smart) {
+        kit.smart = true;
+        this.AddDemand(gamedataStatType.Intelligence, 2.0);
+      } else {
+        if Equals(evolution, gamedataWeaponEvolution.Tech) {
+          kit.charged = true;
+          this.AddDemand(gamedataStatType.TechnicalAbility, 2.0);
+        }
+      }
+    }
+  }
+
+  // The build's main attribute is what makes it this kind of build. After that, V's gear decides.
+  private func OrderAttributes() -> Void {
+    let rest: array<gamedataStatType>;
+    for stat in HotswapNames.Attributes() {
+      if NotEquals(stat, this.m_type.main) {
+        ArrayPush(rest, stat);
+      }
+    }
+    ArrayClear(this.m_order);
+    ArrayPush(this.m_order, this.m_type.main);
+    while ArraySize(rest) > 0 {
+      let best = 0;
+      let bestScore = -1.0;
+      let i = 0;
+      while i < ArraySize(rest) {
+        let score = this.m_demand[this.AttributeIndex(rest[i])];
+        let lean = ArrayFindFirst(this.m_type.lean, rest[i]);
+        if lean >= 0 {
+          score += 0.5 - Cast<Float>(lean) * 0.1;
+        }
+        if score > bestScore {
+          bestScore = score;
+          best = i;
+        }
+        i += 1;
+      }
+      ArrayPush(this.m_order, rest[best]);
+      ArrayErase(rest, best);
+    }
+  }
+
+  // Where an attribute stands in this build. Only the first three get points on purpose.
+  private func OrderRank(stat: gamedataStatType) -> Int32 {
+    let rank = ArrayFindFirst(this.m_order, stat);
+    return rank < 3 ? rank : -1;
   }
 
   // ---- Attributes ------------------------------------------------------------------------------
@@ -186,11 +449,16 @@ public class HotswapRecommender {
       i += 1;
     }
     let points = HotswapTotals.Read(this.m_ctx).attribute;
+    // The gear this build is made around has to be usable before anything else matters, which on a
+    // low-level V can take most of the points.
+    for stat in this.m_order {
+      points = this.Raise(stat, this.m_needs[this.AttributeIndex(stat)], points);
+    }
     let order = [0, 1, 0, 0, 1, 2, 1, 2, 2];
     let tiers = [9, 9, 15, 20, 15, 9, 20, 15, 20];
     i = 0;
     while i < ArraySize(order) {
-      points = this.Raise(this.m_type.attributes[order[i]], tiers[i], points);
+      points = this.Raise(this.m_order[order[i]], tiers[i], points);
       i += 1;
     }
     // Whatever is left goes wherever there is still room.
@@ -244,34 +512,20 @@ public class HotswapRecommender {
     this.m_primaryLeft = totals.primary;
     this.m_relicLeft = totals.relic;
 
-    // Each branch is finished before the next starts, because the archetype lists them best first.
-    // Going tier by tier across all of them instead spends the points on cheap perks in side trees,
-    // and the main tree's master perks are never reached.
-    for branch in this.m_type.branches {
-      for tier in [0, 4, 9, 15, 20] {
-        let i = 0;
-        while i < count {
-          if this.m_stock.perkTiers[i] == tier && StrBeginsWith(this.m_stock.perkNames[i], branch) {
-            this.Take(HotswapNames.PerkAt(i), 0);
-          }
-          i += 1;
-        }
-      }
+    // Each tree is finished before the next starts. Going tier by tier across all of them instead
+    // spends the points on cheap perks in side trees, and the main tree's master perks are never
+    // reached. The first pass buys only what serves what this build carries. Points still left go
+    // to the rest of what its attributes reach, rather than sitting unspent.
+    let trees: array<String>;
+    for stat in this.m_order {
+      ArrayPush(trees, HotswapRecommender.TreePrefix(stat));
     }
-
-    // Points still left go to the rest of the trees this build's attributes reach, rather than
-    // sitting unspent.
-    for stat in this.m_type.attributes {
-      let tree = HotswapRecommender.TreePrefix(stat);
-      for tier in [4, 9, 15, 20] {
-        let i = 0;
-        while i < count {
-          if this.m_stock.perkTiers[i] == tier && StrBeginsWith(this.m_stock.perkNames[i], tree) {
-            this.Take(HotswapNames.PerkAt(i), 0);
-          }
-          i += 1;
-        }
-      }
+    ArrayPush(trees, "Espionage_");
+    for tree in trees {
+      this.BuyTree(tree, true);
+    }
+    for tree in trees {
+      this.BuyTree(tree, false);
     }
 
     let i = 0;
@@ -285,6 +539,60 @@ public class HotswapRecommender {
       }
       i += 1;
     }
+  }
+
+  private func BuyTree(tree: String, usefulOnly: Bool) -> Void {
+    let count = HotswapNames.PerkCount();
+    for tier in [0, 4, 9, 15, 20] {
+      let i = 0;
+      while i < count {
+        if this.m_stock.perkTiers[i] == tier && StrBeginsWith(this.m_stock.perkNames[i], tree) {
+          let perk = HotswapNames.PerkAt(i);
+          if !usefulOnly || this.Serves(perk, 0) {
+            this.Take(perk, 0);
+          }
+        }
+        i += 1;
+      }
+    }
+  }
+
+  // Whether a branch of the tree does anything for this build's gear. Branches with no line here help
+  // any build. Master and in-between perks have no line of their own: they follow their parents.
+  private func BranchServes(name: String) -> Bool {
+    let kit = this.m_kit;
+    if StrBeginsWith(name, "Body_Left") { return kit.heavy; }
+    if StrBeginsWith(name, "Body_Right") { return kit.blunt; }
+    if StrBeginsWith(name, "Cool_Left") { return kit.precise; }
+    if StrBeginsWith(name, "Cool_Right") { return kit.thrown; }
+    if StrBeginsWith(name, "Reflexes_Left") { return kit.automatic; }
+    if StrBeginsWith(name, "Reflexes_Right") { return kit.blades; }
+    if StrBeginsWith(name, "Intelligence_Left") || StrBeginsWith(name, "Intelligence_Central") { return kit.deck; }
+    if StrBeginsWith(name, "Intelligence_Right") { return kit.smart; }
+    if StrBeginsWith(name, "Intelligence_Inbetween_Left_2") { return kit.wires; }
+    if StrBeginsWith(name, "Tech_Right") { return kit.charged; }
+    if StrBeginsWith(name, "Tech_Inbetween_Left") { return kit.launcher; }
+    if StrBeginsWith(name, "Espionage_Left") { return kit.camo; }
+    if StrBeginsWith(name, "Espionage_Central") { return kit.arms; }
+    return true;
+  }
+
+  private func Serves(perk: gamedataNewPerkType, depth: Int32) -> Bool {
+    if !this.BranchServes(this.m_stock.perkNames[EnumInt(perk)]) {
+      return false;
+    }
+    let record = RPGManager.GetNewPerkRecord(perk);
+    if !IsDefined(record) || depth > 16 {
+      return true;
+    }
+    let parents: array<wref<NewPerk_Record>>;
+    record.RequiresPerks(parents);
+    for parent in parents {
+      if !this.Serves(parent.Type(), depth + 1) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static func TreePrefix(stat: gamedataStatType) -> String {
@@ -480,7 +788,7 @@ public class HotswapRecommender {
 
   private func Score(item: ItemID, data: wref<gameItemData>) -> Float {
     let score = HotswapRecommender.Rank(data) * 10.0;
-    let rank = this.m_type.AttributeRank(this.Attunement(item));
+    let rank = this.OrderRank(this.Attunement(item));
     if rank >= 0 {
       score += Cast<Float>(15 - rank * 5);
     }
@@ -526,13 +834,11 @@ public class HotswapRecommender {
     this.m_used += HotswapGear.Capacity(this.m_ctx, item);
     this.m_draft.Add(HotswapKindGear(), HotswapNames.OfArea(area), slot, item);
     this.m_picks += 1;
-    let rank = this.m_type.AttributeRank(this.Attunement(item));
-    if rank >= 0 {
+    if this.OrderRank(this.Attunement(item)) >= 0 {
       this.m_attunedPicks += 1;
     }
-    let live = HotswapGear.Raw(this.m_ctx, area, slot);
-    if HotswapGear.Same(HotswapGear.Canon(this.m_ctx, area, live), item) && !EquipmentSystem.IsItemCyberdeck(item) {
-      this.KeepParts(live, item);
+    if HotswapGear.Holds(this.m_ctx, area, slot, item) && !EquipmentSystem.IsItemCyberdeck(item) {
+      this.KeepParts(HotswapGear.Raw(this.m_ctx, area, slot), item);
     }
   }
 
@@ -600,11 +906,24 @@ public class HotswapRecommender {
       return;
     }
     let none: array<CName>;
+    let link = [n"SmartLink"];
     let open = this.SlotsAfterPerks(area);
     let total = this.m_ctx.equip.GetNumberOfSlots(area, true);
     let slot = 0;
     while slot < total {
-      let item = slot < open ? this.Best(area, none, false) : ItemID.None();
+      let item = ItemID.None();
+      if slot < open {
+        // Smart weapons only lock on through a Smart Link, so a build carrying one needs it first.
+        if slot == 0 && this.m_kit.smart && Equals(area, gamedataEquipmentArea.HandsCW) {
+          item = this.Best(area, link, true);
+          if !ItemID.IsValid(item) {
+            ArrayPush(this.m_draft.notes, "V's Smart weapons won't lock on without a Smart Link, and none fits this build.");
+          }
+        }
+        if !ItemID.IsValid(item) {
+          item = this.Best(area, none, false);
+        }
+      }
       if ItemID.IsValid(item) {
         this.Place(area, slot, item);
       } else {
@@ -624,6 +943,7 @@ public class HotswapRecommender {
       let none: array<CName>;
       item = this.Best(area, none, false);
     }
+    this.CheckRequired(item);
     if ItemID.IsValid(item) {
       this.Place(area, 0, item);
       ArrayPush(this.m_draft.uses, HotswapGear.DisplayName(this.m_ctx, item));
@@ -631,6 +951,20 @@ public class HotswapRecommender {
         this.LoadDeck(item);
       }
     }
+  }
+
+  // Nearly every build is worth recommending from whatever V owns. The exception is one that can't
+  // work at all without a piece V can't use, like a netrunner with nothing to hack with. That one
+  // says what it needs and isn't made.
+  private func CheckRequired(system: ItemID) -> Void {
+    let needed = this.m_type.requires;
+    if ArraySize(needed) == 0 || (ItemID.IsValid(system) && ArrayContains(needed, this.Type(system))) {
+      return;
+    }
+    let owned = this.Strongest(gamedataEquipmentArea.SystemReplacementCW, needed, true);
+    this.m_draft.blocker = ItemID.IsValid(owned)
+      ? HotswapText.RequiredUnusable(this.m_type.name, this.m_type.requiresName, HotswapGear.DisplayName(this.m_ctx, owned))
+      : HotswapText.RequiredMissing(this.m_type.name, this.m_type.requiresName);
   }
 
   private func ChooseArms() -> Void {
@@ -725,13 +1059,22 @@ public class HotswapRecommender {
     return affinity * (data.GetStatValueByType(gamedataStatType.EffectiveDPS) + HotswapRecommender.Rank(data) * 10.0);
   }
 
+  // A draft has its own attributes, so V's current ones say nothing about what it can wield. While
+  // surveying, the draft's aren't settled yet, so only what can never change counts.
+  private func Wieldable(data: wref<gameItemData>, surveying: Bool) -> Bool {
+    if this.m_ctx.Stat(gamedataStatType.Level) < Cast<Float>(FloorF(data.GetStatValueByType(gamedataStatType.Level))) {
+      return false;
+    }
+    return surveying ? !RPGManager.IsItemBroken(data) : this.MeetsRequirements(data);
+  }
+
   // best of what's left, limited to melee or to ranged if asked. 0 is either, 1 melee, 2 ranged.
-  private func BestWeapon(kind: Int32) -> ItemID {
+  private func BestWeapon(kind: Int32, surveying: Bool) -> ItemID {
     let best = ItemID.None();
     let bestScore = 0.0;
     for data in this.m_stock.weapons {
       let id = data.GetID();
-      if !this.m_bag.IsClaimed(id) && (kind == 0 || Equals(kind == 1, WeaponObject.IsMelee(id))) && this.m_ctx.equip.IsEquippable(data) {
+      if !this.m_bag.IsClaimed(id) && (kind == 0 || Equals(kind == 1, WeaponObject.IsMelee(id))) && this.Wieldable(data, surveying) {
         let score = this.WeaponScore(id, data);
         if score > bestScore {
           bestScore = score;
@@ -748,7 +1091,7 @@ public class HotswapRecommender {
     let picks: array<ItemID>;
     let open = Min(3, this.m_ctx.equip.GetNumberOfSlots(gamedataEquipmentArea.Weapon, false));
     for kind in [2, 1, 0] {
-      let item = ArraySize(picks) < open ? this.BestWeapon(kind) : ItemID.None();
+      let item = ArraySize(picks) < open ? this.BestWeapon(kind, false) : ItemID.None();
       if ItemID.IsValid(item) {
         this.m_bag.Claim(item);
         ArrayPush(picks, item);

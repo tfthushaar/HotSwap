@@ -12,6 +12,7 @@ public class HotswapSystem extends ScriptableSystem {
   private let m_settings: ref<HotswapSettings>;
   private let m_apply: ref<HotswapApply>;
   private let m_listener: wref<HotswapRow>;
+  private let m_resetScreen: wref<NewPerksCategoriesGameController>;
   private let m_lastSwapAt: Float;
 
   public static func Get(game: GameInstance) -> ref<HotswapSystem> {
@@ -197,6 +198,10 @@ public class HotswapSystem extends ScriptableSystem {
     this.m_listener = row;
   }
 
+  public func SetResetScreen(screen: wref<NewPerksCategoriesGameController>) -> Void {
+    this.m_resetScreen = screen;
+  }
+
   public func SecondsSinceSwap() -> Float {
     return EngineTime.ToFloat(GameInstance.GetEngineTime(this.GetGameInstance())) - this.m_lastSwapAt;
   }
@@ -229,6 +234,12 @@ public class HotswapSystem extends ScriptableSystem {
 
   public func OnSwapFinished(report: ref<HotswapReport>) -> Void {
     this.m_lastSwapAt = EngineTime.ToFloat(GameInstance.GetEngineTime(this.GetGameInstance()));
+    if IsDefined(this.m_resetScreen) {
+      let screen = this.m_resetScreen;
+      this.m_resetScreen = null;
+      screen.HotswapResetFinished(report);
+      return;
+    }
     if IsDefined(this.m_listener) {
       this.m_listener.OnSwapFinished(report);
     } else {
