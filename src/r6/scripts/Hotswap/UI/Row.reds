@@ -1,8 +1,8 @@
-// Hotswap - the row of five slots beside the outfit row.
+// Hotswap - the five build slots on the inventory's first page.
 //
-// The row sits inside the outfit row's own panel, so it lines up with it and shows and hides with it.
-// That panel is a horizontal panel, so it places whatever is in it, including whatever Equipment-EX
-// puts there instead of the outfit slots.
+// They stand in a column beside OUTFIT, in the page's own panel. They were first beside the outfit
+// row on the Outfit screen, but that row takes the whole width of a 16:9 screen, and five more slots
+// ran off the edge. The first page also has them one click from opening the inventory.
 //
 // The slots are the game's own widget with the game's own controller, which gives the row the same
 // states and animation for free. Their events are routed here before the outfit code can see them,
@@ -29,8 +29,6 @@ public class HotswapRow {
   private let m_tooltips: wref<gameuiTooltipsManager>;
   private let m_hints: wref<ButtonHints>;
   private let m_controller: wref<gameuiInventoryGameController>;
-  private let m_owner: wref<InventoryItemModeLogicController>;
-  private let m_container: wref<inkCompoundWidget>;
   private let m_root: wref<inkCompoundWidget>;
   private let m_label: wref<inkText>;
   private let m_slots: array<wref<WardrobeOutfitSlotController>>;
@@ -46,13 +44,11 @@ public class HotswapRow {
   private let m_popupPlan: ref<HotswapPlan>;
   private let m_popupDraft: ref<HotswapDraft>;
 
-  public func Attach(player: wref<PlayerPuppet>, tooltips: wref<gameuiTooltipsManager>, hints: wref<ButtonHints>, controller: wref<gameuiInventoryGameController>, owner: wref<InventoryItemModeLogicController>, container: wref<inkCompoundWidget>, root: wref<inkCompoundWidget>, label: wref<inkText>) -> Void {
+  public func Attach(player: wref<PlayerPuppet>, tooltips: wref<gameuiTooltipsManager>, hints: wref<ButtonHints>, controller: wref<gameuiInventoryGameController>, root: wref<inkCompoundWidget>, label: wref<inkText>) -> Void {
     this.m_player = player;
     this.m_tooltips = tooltips;
     this.m_hints = hints;
     this.m_controller = controller;
-    this.m_owner = owner;
-    this.m_container = container;
     this.m_root = root;
     this.m_label = label;
     this.m_hovered = -1;
@@ -66,13 +62,6 @@ public class HotswapRow {
     if IsDefined(slot) {
       slot.HotswapAdopt(this, ArraySize(this.m_slots));
       ArrayPush(this.m_slots, slot);
-    }
-  }
-
-  // The outfit slots spawn asynchronously, so they can arrive after the row. It stays last.
-  public func KeepLast() -> Void {
-    if IsDefined(this.m_container) && IsDefined(this.m_root) {
-      this.m_container.ReorderChild(this.m_root, this.m_container.GetNumChildren() - 1);
     }
   }
 
@@ -92,7 +81,7 @@ public class HotswapRow {
     } else {
       this.m_mode = HotswapRowMode.Builds;
       // The hints and tooltip share their names with the inventory's own, so this is only safe to
-      // clear when they are ours. This runs on every change of category.
+      // clear when they are ours.
       if this.m_hovered >= 0 {
         this.ClearHover();
       }
@@ -201,7 +190,8 @@ public class HotswapRow {
         data.Description = HotswapText.EmptyBody();
       }
     }
-    this.m_tooltips.ShowTooltipAtWidget(0, target, data, gameuiETooltipPlacement.RightTop, true);
+    // The column is near the screen's right and bottom edges, so the tooltip opens left and centred.
+    this.m_tooltips.ShowTooltipAtWidget(0, target, data, gameuiETooltipPlacement.LeftCenter, true);
   }
 
   private func ClearHints() -> Void {
@@ -331,8 +321,8 @@ public class HotswapRow {
 
   public func OnSwapFinished(report: ref<HotswapReport>) -> Void {
     this.Refresh();
-    if IsDefined(this.m_owner) {
-      this.m_owner.HotswapRefreshItems();
+    if IsDefined(this.m_controller) {
+      this.m_controller.HotswapRefreshItems();
     }
     if report.rolledBack {
       this.Tell(HotswapText.FailedTitle(), HotswapText.ReportLine(report) + "\n" + report.reason);
@@ -532,29 +522,31 @@ protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
 
 // ---- The inventory screen ----------------------------------------------------------------------
 
-@addField(InventoryItemModeLogicController)
+@addField(gameuiInventoryGameController)
 private let m_hotswapRow: ref<HotswapRow>;
 
-@addMethod(InventoryItemModeLogicController)
+@addMethod(gameuiInventoryGameController)
 private func HotswapBuildRow() -> Void {
-  let container = inkWidgetRef.Get(this.m_wardrobeSlotsContainer) as inkCompoundWidget;
-  if !IsDefined(container) {
-    HSLog("The outfit row's panel wasn't found, so there is no row.");
+  let page = inkWidgetRef.Get(this.m_defaultWrapper) as inkCompoundWidget;
+  if !IsDefined(page) {
+    HSLog("The inventory's first page wasn't found, so there is no row.");
     return;
   }
 
-  // Five slots at the width read from the game's own widget, with a gap after the outfit row.
+  // In the page's own 3840 by 2160 layout: level with the OUTFIT slot, and just clear of the RELATED
+  // buttons, which reach 3191. Five slots of 194 and their gaps end about where those buttons do.
   let root = new inkCanvas();
   root.SetName(n"hotswapRow");
-  root.SetSize(new Vector2(1080.0, 194.0));
-  root.SetMargin(new inkMargin(60.0, 0.0, 0.0, 0.0));
-  root.Reparent(container);
+  root.SetSize(new Vector2(216.0, 1002.0));
+  root.SetMargin(new inkMargin(3220.0, 630.0, 0.0, 0.0));
+  root.Reparent(page);
 
-  let panel = new inkHorizontalPanel();
+  let panel = new inkVerticalPanel();
   panel.SetName(n"hotswapSlots");
+  panel.SetChildMargin(new inkMargin(0.0, 0.0, 0.0, 8.0));
   panel.Reparent(root);
 
-  // The outfit label sits 30 above its panel in the same way.
+  // The label hangs from its bottom edge, as the game's own do, so it sits above the slots.
   let label = new inkText();
   label.SetName(n"hotswapLabel");
   label.SetFontFamily("base\\gameplay\\gui\\fonts\\raj\\raj.inkfontfamily");
@@ -563,11 +555,13 @@ private func HotswapBuildRow() -> Void {
   label.BindProperty(n"fontWeight", n"MainColors.BodyFontWeight");
   label.BindProperty(n"fontSize", n"MainColors.ReadableSmall");
   label.SetLetterCase(textLetterCase.UpperCase);
-  label.SetMargin(new inkMargin(0.0, -30.0, 0.0, 0.0));
+  label.SetFitToContent(true);
+  label.SetAnchorPoint(new Vector2(0.0, 1.0));
+  label.SetMargin(new inkMargin(0.0, -32.0, 0.0, 0.0));
   label.Reparent(root);
 
   let row = new HotswapRow();
-  row.Attach(this.m_player, this.m_TooltipsManager, this.m_buttonHintsController, this.m_inventoryController, this, container, root, label);
+  row.Attach(this.m_player, this.m_TooltipsManager, this.m_buttonHintsController, this, root, label);
   let i = 0;
   while i < HotswapSlotCount() {
     let widget = this.SpawnFromLocal(panel, n"wardrobeOutfitSlot");
@@ -577,30 +571,40 @@ private func HotswapBuildRow() -> Void {
     i += 1;
   }
   this.m_hotswapRow = row;
+  row.SetActive(Equals(this.m_mode, InventoryModes.Default));
 }
 
-@addMethod(InventoryItemModeLogicController)
+@addMethod(gameuiInventoryGameController)
 public func HotswapRefreshItems() -> Void {
-  this.RefreshAvailableItems();
+  this.m_InventoryManager.MarkToRebuild();
+  this.RefreshUI();
 }
 
-// Every path to the outfit row goes through this, including Equipment-EX's replacement of it.
-@wrapMethod(InventoryItemModeLogicController)
-private final func UpdateOutfitWardrobe(active: Bool, activeSetOverride: Int32) -> Void {
-  wrappedMethod(active, activeSetOverride);
-  if active && !IsDefined(this.m_hotswapRow) {
+// The whole page is ready by the end of this, and it runs once each time the inventory opens.
+@wrapMethod(gameuiInventoryGameController)
+protected cb func OnSetUserData(userData: ref<IScriptable>) -> Bool {
+  let result = wrappedMethod(userData);
+  if !IsDefined(this.m_hotswapRow) {
     this.HotswapBuildRow();
   }
+  return result;
+}
+
+// Every move between the first page and an item screen goes through this. The page's own transition
+// isn't enough to hide the slots: it only animates, and they must not take clicks behind a screen.
+@wrapMethod(gameuiInventoryGameController)
+private final func SwapMode(mode: InventoryModes) -> Void {
+  wrappedMethod(mode);
   if IsDefined(this.m_hotswapRow) {
-    this.m_hotswapRow.SetActive(active);
+    this.m_hotswapRow.SetActive(Equals(mode, InventoryModes.Default));
   }
 }
 
-@wrapMethod(InventoryItemModeLogicController)
-protected cb func OnOutfitWardrobeSlotSpawned(widget: ref<inkWidget>, userData: ref<IScriptable>) -> Bool {
-  let result = wrappedMethod(widget, userData);
+// V's gear can change on this page, and the lit slot has to follow it.
+@wrapMethod(gameuiInventoryGameController)
+private final func RefreshUI() -> Void {
+  wrappedMethod();
   if IsDefined(this.m_hotswapRow) {
-    this.m_hotswapRow.KeepLast();
+    this.m_hotswapRow.Refresh();
   }
-  return result;
 }

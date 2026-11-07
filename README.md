@@ -22,7 +22,7 @@ Install with a mod manager, or extract the zip into the game folder so that the 
 
 ## Using it
 
-Open the inventory and click the Outfit slot. The Builds row sits beside the outfit row.
+Open the inventory. The Builds column sits right beside OUTFIT, on the first page.
 
 | Hover a slot and press | On an empty slot | On a slot holding a build |
 |---|---|---|

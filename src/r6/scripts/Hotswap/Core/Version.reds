@@ -2,8 +2,8 @@
 //
 // tools/package.ps1 writes these two lines. Nothing else should edit them.
 
-public func HotswapVersion() -> String = "0.1.0"
-public func HotswapVersionCode() -> Int32 = 100
+public func HotswapVersion() -> String = "0.1.1"
+public func HotswapVersionCode() -> Int32 = 101
 
 // Which layout the saved data was written with. See Core/System.reds before changing it.
 public func HotswapSchema() -> Int32 = 1
