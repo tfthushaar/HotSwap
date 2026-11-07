@@ -16,15 +16,15 @@ public abstract class HotswapText {
   public static func Cooldown(seconds: Int32) -> String = s"Wait \(seconds)s before switching again."
   public static func CantAfford(cost: Int32) -> String = s"A swap costs \(cost) eddies."
 
-  public static func Join(const items: script_ref<array<String>>) -> String {
+  public static func Join(items: array<String>) -> String {
     let text = "";
-    for item in Deref(items) {
+    for item in items {
       text = StrLen(text) == 0 ? item : text + ", " + item;
     }
     return text;
   }
 
-  public static func DidNotLand(const items: script_ref<array<String>>) -> String {
+  public static func DidNotLand(items: array<String>) -> String {
     return "These wouldn't go on: " + HotswapText.Join(items) + ".";
   }
 
@@ -92,7 +92,7 @@ public abstract class HotswapText {
   public static func ClearTitle() -> String = "Clear this build?"
   public static func ClearBody(name: String) -> String = "Clear " + name + "? V keeps everything they have on."
   public static func ConfirmTitle() -> String = "Switch anyway?"
-  public static func PartialBody(const missing: script_ref<array<String>>) -> String = HotswapText.Join(missing) + " can't be found. Switch anyway?"
+  public static func PartialBody(missing: array<String>) -> String = HotswapText.Join(missing) + " can't be found. Switch anyway?"
   public static func ReplaceTitle() -> String = "Replace this build?"
   public static func ReplaceBody(name: String, recommended: String) -> String = "Replace " + name + " with the recommended " + recommended + " build, and switch V to it now? Attributes, perks, cyberware, weapons and weapon mods all change."
   public static func AdoptTitle(name: String) -> String = "Switch to " + name + "?"
@@ -124,7 +124,7 @@ public abstract class HotswapText {
 
   public static func ResetName() -> String = "Reset"
   public static func ResetTitle() -> String = "Reset Attributes"
-  public static func ResetBody(const items: script_ref<array<String>>) -> String {
+  public static func ResetBody(items: array<String>) -> String {
     return "This cyberware needs perks the reset removes, so it comes off first and stays in V's inventory: " + HotswapText.Join(items) + ".";
   }
 }

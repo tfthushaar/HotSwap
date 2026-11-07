@@ -35,6 +35,9 @@ foreach ($needed in @($mod, $compiler, $vanillaCache, $codeware, $modSettings)) 
   if (-not (Test-Path -LiteralPath $needed)) { throw "Not found: $needed" }
 }
 
+# The compiler accepts code that crashes the game at run time. This catches the kind that has.
+& (Join-Path $PSScriptRoot 'check_array_arguments.ps1') -Root $mod
+
 $work = Join-Path ([IO.Path]::GetTempPath()) ("hotswap-compile-" + [Guid]::NewGuid().ToString('N'))
 $scripts = Join-Path $work 'scripts'
 New-Item -ItemType Directory -Path $scripts -Force | Out-Null

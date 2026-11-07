@@ -36,7 +36,7 @@ public abstract class HotswapReset {
 
   // The biggest piece still on, so as few as possible come off. The operating system and arms go only
   // if nothing else is left, and eyes and capacity boosters stay, since neither can help here.
-  private static func Biggest(ctx: ref<HotswapContext>, const off: script_ref<array<ItemID>>, core: Bool) -> ItemID {
+  private static func Biggest(ctx: ref<HotswapContext>, off: array<ItemID>, core: Bool) -> ItemID {
     let best = ItemID.None();
     let most = 0.0;
     let loadout = ctx.equip.GetEquipment();
@@ -45,7 +45,7 @@ public abstract class HotswapReset {
       if HotswapNames.IsCyberwareArea(area.areaType) && NotEquals(area.areaType, gamedataEquipmentArea.EyesCW) && Equals(isCore, core) {
         for slot in area.equipSlots {
           let item = slot.itemID;
-          if ItemID.IsValid(item) && !ArrayContains(Deref(off), item) && !HotswapGear.IsBooster(ctx, item) && !HotswapGear.IsPinned(ctx, item) {
+          if ItemID.IsValid(item) && !ArrayContains(off, item) && !HotswapGear.IsBooster(ctx, item) && !HotswapGear.IsPinned(ctx, item) {
             let size = HotswapReset.CostWithoutPerks(ctx, item);
             if size > most {
               most = size;
@@ -103,7 +103,7 @@ public abstract class HotswapReset {
     return off;
   }
 
-  public static func Plan(ctx: ref<HotswapContext>, const off: script_ref<array<ItemID>>) -> ref<HotswapPlan> {
+  public static func Plan(ctx: ref<HotswapContext>, off: array<ItemID>) -> ref<HotswapPlan> {
     let plan = new HotswapPlan();
     plan.name = HotswapText.ResetName();
     plan.free = true;
@@ -118,7 +118,7 @@ public abstract class HotswapReset {
           let want = new HotswapWant();
           want.area = area.areaType;
           want.slot = slot;
-          want.item = ArrayContains(Deref(off), live) ? ItemID.None() : HotswapGear.Canon(ctx, area.areaType, live);
+          want.item = ArrayContains(off, live) ? ItemID.None() : HotswapGear.Canon(ctx, area.areaType, live);
           ArrayPush(plan.gear, want);
           slot += 1;
         }

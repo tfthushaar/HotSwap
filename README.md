@@ -96,7 +96,9 @@ resolve are skipped and reported.
 left alone. `tools/package.ps1 -Version x.y.z` builds a release zip.
 
 Before changing anything persisted, read the comment at the top of `Core/Types.reds`. Scripts are
-never deleted: see `tools/check_scripts_kept.ps1`.
+never deleted: see `tools/check_scripts_kept.ps1`. Array intrinsics such as `ArrayContains` only ever
+get a named array, never a function's result: `tools/check_array_arguments.ps1` runs on every compile,
+because the compiler accepts the other form and it crashes the game.
 
 ## License
 

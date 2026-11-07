@@ -220,7 +220,7 @@ public abstract class HotswapPlanner {
     return parts;
   }
 
-  private static func AddPart(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, bag: ref<HotswapBag>, const installed: script_ref<array<ItemID>>, row: ref<HotswapEntry>) -> Void {
+  private static func AddPart(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, bag: ref<HotswapBag>, installed: array<ItemID>, row: ref<HotswapEntry>) -> Void {
     let host = HotswapPlanner.ResolveShared(ctx, bag, row.host);
     if !ItemID.IsValid(host) {
       return;
@@ -230,7 +230,7 @@ public abstract class HotswapPlanner {
     want.attach = row.attach;
     want.part = row.item;
     let held = false;
-    for id in Deref(installed) {
+    for id in installed {
       if ItemID.GetTDBID(id) == ItemID.GetTDBID(row.item) {
         held = true;
       }
@@ -255,11 +255,11 @@ public abstract class HotswapPlanner {
     }
   }
 
-  private static func AddPerks(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, const rows: script_ref<array<ref<HotswapEntry>>>) -> Void {
+  private static func AddPerks(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, rows: array<ref<HotswapEntry>>) -> Void {
     let wanted: array<Int32>;
     let count = HotswapNames.PerkCount();
     ArrayResize(wanted, count);
-    for row in Deref(rows) {
+    for row in rows {
       if row.kind == HotswapKindPerk() {
         if HotswapNames.PerkExists(row.key) {
           wanted[EnumInt(HotswapNames.ToPerk(row.key))] = row.value;
@@ -289,11 +289,11 @@ public abstract class HotswapPlanner {
 
   // A build without a row for an attribute keeps V's current value, which the reset would otherwise
   // take back to 3.
-  private static func AddAttributes(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, const rows: script_ref<array<ref<HotswapEntry>>>) -> Void {
+  private static func AddAttributes(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, rows: array<ref<HotswapEntry>>) -> Void {
     for stat in HotswapNames.Attributes() {
       let current = Cast<Int32>(ctx.dev.GetAttributeValue(stat));
       let value = current;
-      for row in Deref(rows) {
+      for row in rows {
         if row.kind == HotswapKindAttribute() && Equals(HotswapNames.ToStat(row.key), stat) {
           value = row.value;
         }
@@ -347,13 +347,13 @@ public abstract class HotswapPlanner {
 
   // Totals only grow, so a saved build should always be affordable. This catches a save edited by
   // something else. Points left over are what V has earned since the build was made.
-  private static func CheckPoints(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, const rows: script_ref<array<ref<HotswapEntry>>>) -> Void {
+  private static func CheckPoints(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, rows: array<ref<HotswapEntry>>) -> Void {
     let totals = HotswapTotals.Read(ctx);
     let primary = 0;
     let relic = 0;
     let attribute = 0;
     let haveAttributes = false;
-    for row in Deref(rows) {
+    for row in rows {
       if row.kind == HotswapKindPerk() && HotswapNames.PerkExists(row.key) {
         let perk = HotswapNames.ToPerk(row.key);
         if ctx.dev.IsNewPerkEspionage(perk) {

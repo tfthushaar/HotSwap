@@ -181,7 +181,10 @@ public abstract class HotswapGear {
     if attach == t"AttachmentSlots.Scope" || attach == t"AttachmentSlots.PowerModule" {
       return true;
     }
-    return ArrayContains(RPGManager.GetModsSlotIDs(RPGManager.GetItemType(weapon)), attach);
+    // Stored first: an array intrinsic must never be handed a function's result (see
+    // tools/check_array_arguments.ps1).
+    let mods = RPGManager.GetModsSlotIDs(RPGManager.GetItemType(weapon));
+    return ArrayContains(mods, attach);
   }
 
   // Changing arms to a different kind leaves the old cosmetic style on them. The ripperdoc clears

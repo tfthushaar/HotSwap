@@ -238,7 +238,8 @@ public class HotswapRecommender {
 
   // Reads the gear this build would be made around, before the attributes that will limit it exist.
   private func Survey() -> Void {
-    let count = ArraySize(HotswapNames.Attributes());
+    let stats = HotswapNames.Attributes();
+    let count = ArraySize(stats);
     ArrayResize(this.m_demand, count);
     ArrayResize(this.m_needs, count);
     this.m_kit = new HotswapKit();
@@ -278,12 +279,12 @@ public class HotswapRecommender {
   }
 
   // The best piece V owns for an area, whatever it requires.
-  private func Strongest(area: gamedataEquipmentArea, const wanted: script_ref<array<CName>>, typed: Bool) -> ItemID {
+  private func Strongest(area: gamedataEquipmentArea, wanted: array<CName>, typed: Bool) -> ItemID {
     let best = ItemID.None();
     let bestRank = -1.0;
     for data in this.m_stock.cyberware {
       let id = data.GetID();
-      if Equals(EquipmentSystem.GetEquipAreaType(id), area) && (!typed || ArrayContains(Deref(wanted), this.Type(id))) {
+      if Equals(EquipmentSystem.GetEquipAreaType(id), area) && (!typed || ArrayContains(wanted, this.Type(id))) {
         let rank = HotswapRecommender.Rank(data);
         if rank > bestRank {
           bestRank = rank;
@@ -470,7 +471,8 @@ public class HotswapRecommender {
   // ---- Attributes ------------------------------------------------------------------------------
 
   private func AttributeIndex(stat: gamedataStatType) -> Int32 {
-    return ArrayFindFirst(HotswapNames.Attributes(), stat);
+    let stats = HotswapNames.Attributes();
+    return ArrayFindFirst(stats, stat);
   }
 
   private func Attribute(stat: gamedataStatType) -> Int32 {
@@ -933,12 +935,12 @@ public class HotswapRecommender {
   }
 
   // The best piece for a slot. wanted limits it to a list of cyberware types, if given.
-  private func Best(area: gamedataEquipmentArea, const wanted: script_ref<array<CName>>, typed: Bool) -> ItemID {
+  private func Best(area: gamedataEquipmentArea, wanted: array<CName>, typed: Bool) -> ItemID {
     let best = ItemID.None();
     let bestScore = -1.0;
     for data in this.m_stock.cyberware {
       let id = data.GetID();
-      if this.CanUse(id, data, area) && (!typed || ArrayContains(Deref(wanted), this.Type(id))) {
+      if this.CanUse(id, data, area) && (!typed || ArrayContains(wanted, this.Type(id))) {
         let score = this.Score(id, data);
         if score > bestScore {
           bestScore = score;
@@ -1300,12 +1302,12 @@ public class HotswapRecommender {
 
   // Each mod slot on the build's weapons gets the best mod V has for it: loose in the inventory, or
   // already on one of these weapons. A mod on a weapon the build doesn't use stays where it is.
-  private func ChooseMods(const picks: script_ref<array<ItemID>>) -> Void {
+  private func ChooseMods(picks: array<ItemID>) -> Void {
     let pool: array<ItemID>;
     for data in this.m_stock.parts {
       ArrayPush(pool, data.GetID());
     }
-    for weapon in Deref(picks) {
+    for weapon in picks {
       let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, weapon);
       for slot in slots {
         if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(weapon, slot.slotID, slot.innerItemData) {
@@ -1314,7 +1316,7 @@ public class HotswapRecommender {
       }
     }
     let taken: array<ItemID>;
-    for weapon in Deref(picks) {
+    for weapon in picks {
       let slots = ItemModificationSystem.GetAllSlots(this.m_ctx.player, weapon);
       for slot in slots {
         if HotswapGear.IsTrackedPart(weapon, slot.slotID, slot.innerItemData) {
