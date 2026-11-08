@@ -51,6 +51,15 @@ public abstract class HotswapNames {
     return IntEnum<gamedataNewPerkType>(index);
   }
 
+  // Read from the perk's record, the way UnlockNewPerk files it under its tree. The game's own
+  // IsNewPerkEspionage only knows perks that are unlocked, and locking one erases it from that list,
+  // so it answers false for every Relic perk after a reset.
+  public static func IsRelicPerk(perk: gamedataNewPerkType) -> Bool {
+    let record = RPGManager.GetNewPerkRecord(perk);
+    return IsDefined(record) && IsDefined(record.Attribute())
+      && Equals(record.Attribute().Type(), gamedataAttributeDataType.EspionageAttributeData);
+  }
+
   // The five attributes a build sets. Stored under their stat names.
   public static func Attributes() -> array<gamedataStatType> {
     let list: array<gamedataStatType>;

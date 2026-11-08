@@ -8,6 +8,7 @@ public abstract class HotswapText {
   public static func AbilityRunning() -> String = "Wait until V's cyberware ability ends."
   public static func InCombat() -> String = "Builds can't be changed in combat."
   public static func NotEnoughPerkPoints() -> String = "V doesn't have enough perk points for this build."
+  public static func NotEnoughRelicPoints() -> String = "V doesn't have enough Relic points for this build."
   public static func NotEnoughAttributePoints() -> String = "V doesn't have enough attribute points for this build."
   public static func PerksStuck() -> String = "The game refused to change V's perks."
   public static func PointsMoved() -> String = "V's point totals changed unexpectedly."

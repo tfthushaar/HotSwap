@@ -99,7 +99,7 @@ public class HotswapTotals {
       let perk = HotswapNames.PerkAt(i);
       let level = ctx.dev.IsNewPerkBought(perk);
       if level > 0 {
-        if ctx.dev.IsNewPerkEspionage(perk) {
+        if HotswapNames.IsRelicPerk(perk) {
           self.relic += level * HotswapTotals.RelicCost(ctx, perk);
         } else {
           self.primary += level;
@@ -356,7 +356,7 @@ public abstract class HotswapPlanner {
     for row in rows {
       if row.kind == HotswapKindPerk() && HotswapNames.PerkExists(row.key) {
         let perk = HotswapNames.ToPerk(row.key);
-        if ctx.dev.IsNewPerkEspionage(perk) {
+        if HotswapNames.IsRelicPerk(perk) {
           relic += row.value * HotswapTotals.RelicCost(ctx, perk);
         } else {
           primary += row.value;
@@ -367,8 +367,11 @@ public abstract class HotswapPlanner {
         attribute += row.value - 3;
       }
     }
-    if primary > totals.primary || relic > totals.relic {
+    if primary > totals.primary {
       plan.refusal = HotswapText.NotEnoughPerkPoints();
+    }
+    if relic > totals.relic {
+      plan.refusal = HotswapText.NotEnoughRelicPoints();
     }
     if attribute > totals.attribute {
       plan.refusal = HotswapText.NotEnoughAttributePoints();

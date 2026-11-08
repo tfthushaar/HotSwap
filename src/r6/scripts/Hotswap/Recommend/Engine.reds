@@ -585,7 +585,7 @@ public class HotswapRecommender {
       if this.m_levels[i] > 0 {
         let perk = HotswapNames.PerkAt(i);
         this.m_draft.Add(HotswapKindPerk(), HotswapNames.OfPerk(perk), this.m_levels[i], ItemID.None());
-        if !this.m_ctx.dev.IsNewPerkEspionage(perk) {
+        if !HotswapNames.IsRelicPerk(perk) {
           this.m_draft.perkPoints += this.m_levels[i];
         }
       }
@@ -707,7 +707,7 @@ public class HotswapRecommender {
         return false;
       }
     }
-    let relic = this.m_ctx.dev.IsNewPerkEspionage(perk);
+    let relic = HotswapNames.IsRelicPerk(perk);
     let cost = relic ? HotswapTotals.RelicCost(this.m_ctx, perk) : 1;
     while this.m_levels[index] < most {
       if relic {
