@@ -84,14 +84,18 @@ first:
 Each build is made from what V owns at that moment, so two players with different inventories get
 different builds, and the suggestions get better as V finds better gear.
 
+- **Arms and operating system** come first, if V owns them: Monowire and a cyberdeck for a Netrunner,
+  Gorilla Arms and Berserk for a Juggernaut, Mantis Blades and a Sandevistan for a Blade Dancer.
 - **Cyberware** is picked by what each piece does. Second Heart goes into almost every build, melee
   builds get melee cyberware such as Microrotors and Dense Marrow, and a Ghost gets Optical Camo and
   Lynx Paws. The most valuable pieces go in first, so capacity is spent where it counts.
 - **Weapons** are picked to suit the build. A stealth build takes a silenced pistol over a louder one
   that hits harder, and melee builds carry their melee weapon first.
-- **Weapon mods** are the best ones V owns for that build, moved onto the chosen weapons.
+- **Mods** are the best ones V owns for that build, moved onto the chosen weapons and arm cyberware.
 - **Quickhacks** match the build: a Ghost loads quiet hacks, a Netrunner lethal ones.
-- **Attributes and perks** are spent around that gear, using the points V has earned.
+- **Attributes** are spent around that gear, using the points V has earned.
+- **Perks** are chosen one at a time for what the build carries, so a blade build skips shotgun perks
+  and only takes the Relic ability for the arms it uses. Any points left over are yours to spend.
 - If V owns two copies of something, the higher grade is used.
 
 Hover a recommended build to see what it uses. Click it, confirm, and it's saved to the slot and V
