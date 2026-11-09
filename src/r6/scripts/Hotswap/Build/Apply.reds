@@ -425,7 +425,7 @@ public class HotswapApply {
   // ---- Weapons ---------------------------------------------------------------------------------
 
   private func IsLeftSlot(slot: Int32) -> Bool {
-    return slot >= EnumInt(WeaponSlot.LeftSlot_1) && slot <= EnumInt(WeaponSlot.LeftSlot_3);
+    return HotswapPatch.IsLeftWeaponSlot(slot);
   }
 
   private func IsWeaponDirty(slot: Int32) -> Bool {
@@ -436,12 +436,13 @@ public class HotswapApply {
 
   // Taking off a right-hand weapon moves the left-hand one into its slot (UnequipItem). So if either
   // side of a pair has to change, the left comes off first and then the right, and they go back on
-  // in the opposite order.
+  // in the opposite order. On 2.31 no slot is a left-hand one, so only the second loop does anything.
   private func QueueWeaponsOff() -> Void {
     ArrayClear(this.m_cleared);
     for want in this.m_plan.gear {
       if Equals(want.area, gamedataEquipmentArea.Weapon) && this.IsLeftSlot(want.slot) {
-        let right = EquipmentSystemPlayerData.GetOppositeWeaponSlotIndex(want.slot);
+        // -1 if the game can't say; a slot that doesn't exist is never dirty and clears nothing.
+        let right = HotswapPatch.OppositeWeaponSlot(want.slot);
         if this.IsWeaponDirty(want.slot) || this.IsWeaponDirty(right) {
           this.ClearWeapon(want.slot);
           this.ClearWeapon(right);
@@ -493,7 +494,7 @@ public class HotswapApply {
 
   private func CanDualWield(want: ref<HotswapWant>) -> Bool {
     let data = this.m_ctx.ItemData(want.item);
-    return IsDefined(data) && data.CanDualWield(this.m_ctx.player);
+    return IsDefined(data) && HotswapPatch.CanDualWield(data, this.m_ctx.player);
   }
 
   private func WeaponsLanded() -> Bool {

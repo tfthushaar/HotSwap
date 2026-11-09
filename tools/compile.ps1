@@ -13,23 +13,32 @@
   -Extra adds folders of other mods' scripts to the same compile, separated by semicolons, which is
   how Hotswap is tested against Equipment-EX and friends without installing them.
 
+  -BaseCache, -Compiler, -Codeware and -ModSettings replace the installed game's pieces, which is
+  how Hotswap is tested against another game patch: that patch's script cache, and the redscript,
+  Codeware and Mod Settings releases made for it. Each one left out comes from -GameDir.
+
 .EXAMPLE
   ./tools/compile.ps1
   ./tools/compile.ps1 -Extra C:\temp\equipment-ex\scripts
+  ./tools/compile.ps1 -BaseCache C:\temp\2.31\final.redscripts -Compiler C:\temp\redscript-0.5.31\engine\tools\scc.exe -Codeware C:\temp\codeware-1.20.6\red4ext\plugins\Codeware\Scripts -ModSettings C:\temp\mod_settings-0.2.21\red4ext\plugins\mod_settings
 #>
 param(
   [string]$GameDir = 'D:\SteamLibrary\steamapps\common\Cyberpunk 2077',
-  [string]$Extra = ''
+  [string]$Extra = '',
+  [string]$BaseCache = '',
+  [string]$Compiler = '',
+  [string]$Codeware = '',
+  [string]$ModSettings = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
 $repo = Split-Path -Parent $PSScriptRoot
 $mod = Join-Path $repo 'src\r6\scripts\Hotswap'
-$compiler = Join-Path $GameDir 'engine\tools\scc.exe'
-$vanillaCache = Join-Path $GameDir 'r6\cache\final.redscripts'
-$codeware = Join-Path $GameDir 'red4ext\plugins\Codeware\Scripts'
-$modSettings = Join-Path $GameDir 'red4ext\plugins\mod_settings'
+$compiler = if ($Compiler) { $Compiler } else { Join-Path $GameDir 'engine\tools\scc.exe' }
+$vanillaCache = if ($BaseCache) { $BaseCache } else { Join-Path $GameDir 'r6\cache\final.redscripts' }
+$codeware = if ($Codeware) { $Codeware } else { Join-Path $GameDir 'red4ext\plugins\Codeware\Scripts' }
+$modSettings = if ($ModSettings) { $ModSettings } else { Join-Path $GameDir 'red4ext\plugins\mod_settings' }
 
 foreach ($needed in @($mod, $compiler, $vanillaCache, $codeware, $modSettings)) {
   if (-not (Test-Path -LiteralPath $needed)) { throw "Not found: $needed" }

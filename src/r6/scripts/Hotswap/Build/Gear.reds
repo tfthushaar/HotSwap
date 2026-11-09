@@ -188,9 +188,11 @@ public abstract class HotswapGear {
   }
 
   // Changing arms to a different kind leaves the old cosmetic style on them. The ripperdoc clears
-  // it from its own screen, so with the screen bypassed the job falls to us.
+  // it from its own screen, so with the screen bypassed the job falls to us. Arm styles came with
+  // 2.5, so on 2.31 there is never one to clear (HotswapPatch).
   public static func NeedsStyleCleared(ctx: ref<HotswapContext>, incoming: ItemID) -> Bool {
-    if !ItemID.IsValid(ctx.equip.GetActiveItem(gamedataEquipmentArea.ArmsCWStyle)) {
+    let style = HotswapPatch.ArmStyleArea();
+    if Equals(style, gamedataEquipmentArea.Invalid) || !ItemID.IsValid(ctx.equip.GetActiveItem(style)) {
       return false;
     }
     let outgoing = ctx.equip.GetActiveItem(gamedataEquipmentArea.ArmsCW);
@@ -201,17 +203,12 @@ public abstract class HotswapGear {
   }
 
   public static func ClearArmStyle(ctx: ref<HotswapContext>) -> Void {
-    let container = GameInstance.GetScriptableSystemsContainer(ctx.game);
-    let customization = container.Get(n"CyberwareCustomizationSystem") as CyberwareCustomizationSystem;
-    if IsDefined(customization) {
-      let saved = customization.GetSavedData();
-      let request = new SaveAndApplyCyberwareCustomizationDataRequest();
-      request.enabled = false;
-      request.switcherName = saved.switcherName;
-      request.switcherIndex = 0u;
-      customization.QueueRequest(request);
+    let style = HotswapPatch.ArmStyleArea();
+    if Equals(style, gamedataEquipmentArea.Invalid) {
+      return;
     }
-    HotswapGear.QueueUnequip(ctx, gamedataEquipmentArea.ArmsCWStyle, 0);
+    HotswapPatch.SwitchOffArmStyle(ctx.game);
+    HotswapGear.QueueUnequip(ctx, style, 0);
   }
 }
 

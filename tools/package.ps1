@@ -3,8 +3,8 @@
   Builds dist/Hotswap-<Version>.zip, ready for a mod manager or to extract over the game folder.
 
 .DESCRIPTION
-  Stamps the version, checks that no earlier script has gone missing, then compiles. A release that
-  fails any of those is not produced.
+  Stamps the version, checks that no earlier script has gone missing, then compiles for 2.5 and for
+  2.31, since one download serves both. A release that fails any of those is not produced.
 
   The zip is written by hand and not with Compress-Archive, because Windows PowerShell 5.1 writes
   backslashes into entry names, and some extractors then flatten everything into one folder.
@@ -37,6 +37,8 @@ $text = $text -replace 'HotswapVersionCode\(\) -> Int32 = \d+', "HotswapVersionC
 [IO.File]::WriteAllText($versionFile, $text, (New-Object Text.UTF8Encoding $false))
 
 & (Join-Path $PSScriptRoot 'compile.ps1')
+& (Join-Path $PSScriptRoot 'compile231.ps1')
+& (Join-Path $PSScriptRoot 'compile231.ps1') -Codeware 1.18.0
 
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $zipPath = Join-Path $dist "Hotswap-$Version.zip"

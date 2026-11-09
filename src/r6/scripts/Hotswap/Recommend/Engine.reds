@@ -1478,7 +1478,9 @@ public class HotswapRecommender {
       ArrayPush(this.m_modHosts, item);
       slot += 1;
     }
-    for left in [EnumInt(WeaponSlot.LeftSlot_1), EnumInt(WeaponSlot.LeftSlot_2), EnumInt(WeaponSlot.LeftSlot_3)] {
+    // Recommended builds hold one weapon per slot, so any left-hand slots (2.5 only) are emptied.
+    let lefts = HotswapPatch.LeftWeaponSlots();
+    for left in lefts {
       if HotswapGear.SlotExists(this.m_ctx, area, left) {
         this.PlaceEmpty(area, left);
       }

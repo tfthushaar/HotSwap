@@ -8,21 +8,34 @@ respeccing by hand.
 If you'd rather not plan a build yourself, each slot can suggest five builds made from the gear V
 already owns.
 
-> **Early access.** Hotswap has been tested on Cyberpunk 2077 2.5, but every save and mod list is
-> different, so there will be bugs nobody has found yet. Make a save before you install it. If
-> something goes wrong, please open a bug report on the Hotswap Nexus page. See
-> [Reporting a bug](#reporting-a-bug) for what to include.
+> **Early access.** Hotswap runs on Cyberpunk 2077 2.5 and 2.31. It has been played on 2.5 and
+> checked against the game's scripts on 2.31, but every save and mod list is different, so there will
+> be bugs nobody has found yet. Make a save before you install it. If something goes wrong, please
+> open a bug report on the Hotswap Nexus page. See [Reporting a bug](#reporting-a-bug) for what to
+> include.
 
 ## Requirements
 
-- Cyberpunk 2077 2.5
+- Cyberpunk 2077 2.5 or 2.31. The same download works on both.
 - [RED4ext](https://www.nexusmods.com/cyberpunk2077/mods/2380)
 - [redscript](https://www.nexusmods.com/cyberpunk2077/mods/1511)
 - [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780)
-- [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885)
+- [Mod Settings](https://www.nexusmods.com/cyberpunk2077/mods/4885), which also needs
+  [ArchiveXL](https://www.nexusmods.com/cyberpunk2077/mods/4198)
 
 Optional: [Cyber Engine Tweaks](https://www.nexusmods.com/cyberpunk2077/mods/107). Hotswap runs
 without it, but CET is what writes Hotswap's log, and the log is what makes a bug report useful.
+
+Each of these is built for one game patch at a time, so install the builds made for yours:
+
+| Game | RED4ext | redscript | Codeware | Mod Settings | ArchiveXL | CET (optional) |
+|---|---|---|---|---|---|---|
+| 2.5 | 1.31.0 or newer | 0.5.32 or newer | 1.21.0 or newer | 0.2.24 or newer | 1.28.0 or newer | 1.38.0 or newer |
+| 2.31 | 1.29.1 to 1.30.0 | 0.5.31 | 1.18.0 to 1.20.6 | 0.2.21 | 1.26.0 to 1.27.5 | 1.37.0 to 1.37.1 |
+
+On 2.31 the newest build in each range is the last one made for that patch. Everything after it
+needs 2.5. On 2.5, Mod Settings 0.2.22 and 0.2.23 can hang the game while mods register their
+settings, so use 0.2.24 or newer.
 
 ## Installing
 
@@ -131,6 +144,11 @@ default.
 
 Hotswap has been checked for conflicts with Equipment-EX and Cyberware-EX. If a perk overhaul renames
 perks, any perk a saved build can't find is skipped and listed before you switch.
+
+Dual wielding and Glamdoc arm styles came with 2.5. On 2.5, a build keeps V's left-hand weapons and
+switching to different arms clears a style that no longer fits them. Recommended builds leave the
+left hand empty and don't buy the dual wielding perks. On 2.31 none of this comes up, and everything
+else works the same on both patches.
 
 ## Reporting a bug
 
