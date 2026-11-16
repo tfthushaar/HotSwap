@@ -278,6 +278,7 @@ public abstract class HotswapPlanner {
     let style = new HotswapArmStyle();
     if ItemID.IsValid(row.item) {
       style.item = HotswapPlanner.ResolveShared(ctx, bag, row.item);
+      style.look = style.item;
       style.enabled = row.spare == 1;
       style.primary = row.value % 256;
       style.secondary = row.value / 256;

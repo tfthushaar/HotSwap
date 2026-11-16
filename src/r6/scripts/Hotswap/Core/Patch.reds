@@ -134,11 +134,13 @@ public abstract class HotswapPatch {
     let enabled = savedType.GetProperty(n"enabled");
     let primary = savedType.GetProperty(n"primaryColorIndex");
     let secondary = savedType.GetProperty(n"secondaryColorIndex");
-    if !IsDefined(enabled) || !IsDefined(primary) || !IsDefined(secondary) {
+    let look = savedType.GetProperty(n"customizationItemID");
+    if !IsDefined(enabled) || !IsDefined(primary) || !IsDefined(secondary) || !IsDefined(look) {
       return null;
     }
     let style = new HotswapArmStyle();
     style.item = HotswapGear.Raw(ctx, area, 0);
+    style.look = FromVariant<ItemID>(look.GetValue(saved));
     // With no style on, the colours left in the saved data mean nothing, so they aren't kept.
     if ItemID.IsValid(style.item) {
       style.enabled = FromVariant<Bool>(enabled.GetValue(saved));
@@ -219,6 +221,7 @@ public abstract class HotswapPatch {
     let switcherIndex: Uint32 = Cast<Uint32>(index);
     let primary: Uint8 = Cast<Uint8>(style.primary);
     let secondary: Uint8 = Cast<Uint8>(style.secondary);
+    HSLog(s"Arm style request: \(NameToString(switcherName)) look \(index), colours \(style.primary) and \(style.secondary), on: \(enabled)");
     let values: array<CName> = [n"enabled", n"customizationItem", n"switcherName", n"switcherIndex", n"primaryColorIndex", n"secondaryColorIndex"];
     let settings: array<Variant>;
     ArrayPush(settings, ToVariant(enabled));
@@ -280,6 +283,11 @@ public abstract class HotswapPatch {
   // as a new request has them, and queues it on the system. A field not set is what `new` gives it,
   // the same as the game's own requests that don't mention it.
   //
+  // Codeware's SetValue does nothing when a value's type isn't exactly the field's. A request missing
+  // one of its fields would still be taken, and a missing style item costs the look its brand, so its
+  // colours come out empty. So every type is checked first, and a request that wouldn't be whole is
+  // never sent.
+  //
   // The request is made by Reflection and handed over by Reflection too. Codeware returns a new
   // object typed as ISerializable, which redscript can't cast to a request, but the call checks the
   // object's real class, and that is the request the system expects.
@@ -296,15 +304,22 @@ public abstract class HotswapPatch {
       HSLog("Couldn't find the game's arm style request, so the arm style stays as it is");
       return false;
     }
-    let target = ToVariant(request);
+    let fields: array<ref<ReflectionProp>>;
     let i = 0;
     while i < ArraySize(values) {
       let field = requestType.GetProperty(values[i]);
-      if !IsDefined(field) {
-        HSLog(s"The arm style request has no \(NameToString(values[i])), so the arm style stays as it is");
+      let given = Reflection.GetTypeOf(settings[i]);
+      if !IsDefined(field) || !IsDefined(given) || !Equals(field.GetType().GetName(), given.GetName()) {
+        HSLog(s"The arm style request's \(NameToString(values[i])) doesn't take this value, so the arm style stays as it is");
         return false;
       }
-      field.SetValue(target, settings[i]);
+      ArrayPush(fields, field);
+      i += 1;
+    }
+    let target = ToVariant(request);
+    i = 0;
+    while i < ArraySize(fields) {
+      fields[i].SetValue(target, settings[i]);
       i += 1;
     }
     let args: array<Variant>;
@@ -353,6 +368,8 @@ public abstract class HotswapPatch {
     return ok && FromVariant<Bool>(result);
   }
 
+  // A styled look is the same only if the style is in its slot, the system has saved that same style
+  // (its brand, and so its colours, come from it), and the colours and switch match.
   public static func SameArmStyle(a: ref<HotswapArmStyle>, b: ref<HotswapArmStyle>) -> Bool {
     if !IsDefined(a) || !IsDefined(b) {
       return !IsDefined(a) && !IsDefined(b);
@@ -361,13 +378,15 @@ public abstract class HotswapPatch {
       return false;
     }
     return !ItemID.IsValid(a.item)
-      || (Equals(a.enabled, b.enabled) && a.primary == b.primary && a.secondary == b.secondary);
+      || (ItemID.GetTDBID(a.look) == ItemID.GetTDBID(b.look)
+        && Equals(a.enabled, b.enabled) && a.primary == b.primary && a.secondary == b.secondary);
   }
 }
 
 // One arm look from the Glamdoc. An invalid item means plain arms, with no style.
 public class HotswapArmStyle {
-  public let item: ItemID;
+  public let item: ItemID;      // the style in the ArmsCWStyle slot
+  public let look: ItemID;      // the style the customization system has saved, which should be the same
   public let enabled: Bool;
   public let primary: Int32;
   public let secondary: Int32;

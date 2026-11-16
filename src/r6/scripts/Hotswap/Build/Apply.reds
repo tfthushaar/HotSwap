@@ -1,8 +1,8 @@
 // Hotswap - running a swap.
 //
 // A build changes in the order a respec takes: every piece of cyberware comes off, every perk and
-// attribute point is reset, attributes are assigned, then perks, then cyberware goes back on, then
-// the Glamdoc look for the arms, then weapon mods, weapons and quick items. Each step meets the needs
+// attribute point is reset, attributes are assigned, then perks, then the Glamdoc look for the arms,
+// then cyberware goes back on, then weapon mods, weapons and quick items. Each step meets the needs
 // of the next. With nothing equipped
 // no perk is held in place by the cyberware using it, and capacity is only checked once the perks
 // that set it are final, which is when EquipItem checks it (HumanityAllocationPrereq).
@@ -152,15 +152,6 @@ public class HotswapApply {
         // need a moment to catch up as well.
         this.m_waited += 1;
         if this.m_waited >= 3 {
-          this.Enter(HotswapStage.CyberOn);
-        }
-        break;
-      case HotswapStage.CyberOn:
-        this.QueueCyberOn();
-        this.Enter(HotswapStage.WaitCyberOn);
-        break;
-      case HotswapStage.WaitCyberOn:
-        if this.CyberwareLanded() || this.TimedOut() {
           this.Enter(HotswapStage.ArmStyle);
         }
         break;
@@ -170,6 +161,15 @@ public class HotswapApply {
         break;
       case HotswapStage.WaitArmStyle:
         if this.ArmStyleLanded() || this.TimedOut() {
+          this.Enter(HotswapStage.CyberOn);
+        }
+        break;
+      case HotswapStage.CyberOn:
+        this.QueueCyberOn();
+        this.Enter(HotswapStage.WaitCyberOn);
+        break;
+      case HotswapStage.WaitCyberOn:
+        if this.CyberwareLanded() || this.TimedOut() {
           this.Enter(HotswapStage.PartsOff);
         }
         break;
@@ -350,10 +350,15 @@ public class HotswapApply {
 
   // ---- Arm style -------------------------------------------------------------------------------
 
-  // The Glamdoc look goes on once the arms are on, since a style only fits one kind of arms. As at
-  // the Glamdoc, the style item goes in its slot and the look goes to the customization system. A
-  // build without a look leaves the arms as they are, apart from a style the new arms can't take,
+  // As at the Glamdoc, the style item goes in its slot and the look goes to the customization system.
+  // A build without a look leaves the arms as they are, apart from a style the new arms can't take,
   // which came off with the cyberware (NeedsStyleCleared).
+  //
+  // The look is set before the arms go back on, as loading a save does (the system restores it in
+  // OnRestored, before V's arms exist), and never while the arms are still being put together. 1.2.0
+  // set it a tick after the arms went on, and in the game that left Gorilla Arms with pieces
+  // missing. When the swap leaves the cyberware on, the arms are long settled by now, as they are
+  // at the Glamdoc. Whether a style fits is judged against the arms the build will have.
   private func QueueArmStyle() -> Void {
     let want = this.m_plan.armStyle;
     if !IsDefined(want) || want.missing {
@@ -368,9 +373,9 @@ public class HotswapApply {
       HotswapGear.ClearArmStyle(this.m_ctx);
       return;
     }
-    let arms = HotswapGear.Raw(this.m_ctx, gamedataEquipmentArea.ArmsCW, 0);
+    let arms = HotswapPlanner.ArmsAfter(this.m_ctx, this.m_plan);
     if !HotswapPatch.StyleFits(this.m_ctx, want.style.item, arms) {
-      HSLog(s"\(HotswapGear.DisplayName(this.m_ctx, want.style.item)) doesn't fit the arms V has on, so the arm style stays as it is");
+      HSLog(s"\(HotswapGear.DisplayName(this.m_ctx, want.style.item)) doesn't fit the arms this build has, so the arm style stays as it is");
       return;
     }
     HSLog(s"Putting on arm style \(HotswapGear.DisplayName(this.m_ctx, want.style.item))");
@@ -386,11 +391,9 @@ public class HotswapApply {
     if !IsDefined(want) || want.missing {
       return true;
     }
-    if ItemID.IsValid(want.style.item) {
-      let arms = HotswapGear.Raw(this.m_ctx, gamedataEquipmentArea.ArmsCW, 0);
-      if !HotswapPatch.StyleFits(this.m_ctx, want.style.item, arms) {
-        return true;
-      }
+    if ItemID.IsValid(want.style.item)
+      && !HotswapPatch.StyleFits(this.m_ctx, want.style.item, HotswapPlanner.ArmsAfter(this.m_ctx, this.m_plan)) {
+      return true;
     }
     let now = HotswapPatch.ReadArmStyle(this.m_ctx);
     return !IsDefined(now) || HotswapPatch.SameArmStyle(now, want.style);
