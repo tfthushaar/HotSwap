@@ -13,6 +13,7 @@ public abstract class HotswapText {
   public static func PerksStuck() -> String = "The game refused to change V's perks."
   public static func PointsMoved() -> String = "V's point totals changed unexpectedly."
   public static func GearStuck() -> String = "V's cyberware wouldn't come off."
+  public static func PlainArms() -> String = "plain arms, with no Glamdoc style"
 
   public static func Cooldown(seconds: Int32) -> String = s"Wait \(seconds)s before switching again."
   public static func CantAfford(cost: Int32) -> String = s"A swap costs \(cost) eddies."
@@ -69,6 +70,9 @@ public abstract class HotswapText {
     }
     if plan.changedParts > 0 {
       ArrayPush(parts, s"\(plan.changedParts) quickhacks and attachments");
+    }
+    if plan.changedStyle {
+      ArrayPush(parts, "arm style");
     }
     return ArraySize(parts) > 0 ? "Will change: " + HotswapText.Join(parts) : "V is wearing this build.";
   }

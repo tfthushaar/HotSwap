@@ -2,7 +2,8 @@
 //
 // A build changes in the order a respec takes: every piece of cyberware comes off, every perk and
 // attribute point is reset, attributes are assigned, then perks, then cyberware goes back on, then
-// weapon mods, weapons and quick items. Each step meets the needs of the next. With nothing equipped
+// the Glamdoc look for the arms, then weapon mods, weapons and quick items. Each step meets the needs
+// of the next. With nothing equipped
 // no perk is held in place by the cyberware using it, and capacity is only checked once the perks
 // that set it are final, which is when EquipItem checks it (HumanityAllocationPrereq).
 //
@@ -32,6 +33,8 @@ enum HotswapStage {
   WaitWeaponsOn = 14,
   Quick = 15,
   Finish = 16,
+  ArmStyle = 17,
+  WaitArmStyle = 18,
 }
 
 public class HotswapSlotRef {
@@ -158,6 +161,15 @@ public class HotswapApply {
         break;
       case HotswapStage.WaitCyberOn:
         if this.CyberwareLanded() || this.TimedOut() {
+          this.Enter(HotswapStage.ArmStyle);
+        }
+        break;
+      case HotswapStage.ArmStyle:
+        this.QueueArmStyle();
+        this.Enter(HotswapStage.WaitArmStyle);
+        break;
+      case HotswapStage.WaitArmStyle:
+        if this.ArmStyleLanded() || this.TimedOut() {
           this.Enter(HotswapStage.PartsOff);
         }
         break;
@@ -334,6 +346,54 @@ public class HotswapApply {
       }
     }
     return true;
+  }
+
+  // ---- Arm style -------------------------------------------------------------------------------
+
+  // The Glamdoc look goes on once the arms are on, since a style only fits one kind of arms. As at
+  // the Glamdoc, the style item goes in its slot and the look goes to the customization system. A
+  // build without a look leaves the arms as they are, apart from a style the new arms can't take,
+  // which came off with the cyberware (NeedsStyleCleared).
+  private func QueueArmStyle() -> Void {
+    let want = this.m_plan.armStyle;
+    if !IsDefined(want) || want.missing {
+      return;
+    }
+    let now = HotswapPatch.ReadArmStyle(this.m_ctx);
+    if !IsDefined(now) || HotswapPatch.SameArmStyle(now, want.style) {
+      return;
+    }
+    if !ItemID.IsValid(want.style.item) {
+      HSLog("Taking off the arm style");
+      HotswapGear.ClearArmStyle(this.m_ctx);
+      return;
+    }
+    let arms = HotswapGear.Raw(this.m_ctx, gamedataEquipmentArea.ArmsCW, 0);
+    if !HotswapPatch.StyleFits(this.m_ctx, want.style.item, arms) {
+      HSLog(s"\(HotswapGear.DisplayName(this.m_ctx, want.style.item)) doesn't fit the arms V has on, so the arm style stays as it is");
+      return;
+    }
+    HSLog(s"Putting on arm style \(HotswapGear.DisplayName(this.m_ctx, want.style.item))");
+    if !HotswapGear.Holds(this.m_ctx, HotswapPatch.ArmStyleArea(), 0, want.style.item) {
+      HotswapGear.QueueEquip(this.m_ctx, want.style.item, 0);
+    }
+    HotswapPatch.ApplyArmStyle(this.m_ctx, want.style);
+  }
+
+  // Both halves: the style in its slot, and the look the customization system has saved.
+  private func ArmStyleLanded() -> Bool {
+    let want = this.m_plan.armStyle;
+    if !IsDefined(want) || want.missing {
+      return true;
+    }
+    if ItemID.IsValid(want.style.item) {
+      let arms = HotswapGear.Raw(this.m_ctx, gamedataEquipmentArea.ArmsCW, 0);
+      if !HotswapPatch.StyleFits(this.m_ctx, want.style.item, arms) {
+        return true;
+      }
+    }
+    let now = HotswapPatch.ReadArmStyle(this.m_ctx);
+    return !IsDefined(now) || HotswapPatch.SameArmStyle(now, want.style);
   }
 
   // ---- Parts -----------------------------------------------------------------------------------
@@ -558,6 +618,15 @@ public class HotswapApply {
         ArrayPush(failed, NameToString(HotswapNames.OfStat(want.stat)));
       }
     }
+    // A look changes nothing else about V, so one that didn't go on is reported, like a quick item.
+    if !this.ArmStyleLanded() {
+      let style = this.m_plan.armStyle.style;
+      let name = ItemID.IsValid(style.item) ? HotswapGear.DisplayName(this.m_ctx, style.item) : HotswapText.PlainArms();
+      HSLog(s"The arm style didn't land: \(name)");
+      if !ArrayContains(this.m_problems, name) {
+        ArrayPush(this.m_problems, name);
+      }
+    }
     if ArraySize(failed) > 0 {
       if !this.m_isUndo {
         this.Fail(HotswapText.DidNotLand(failed));
@@ -598,6 +667,10 @@ public class HotswapApply {
       if IsDefined(want.entry) && !want.missing && ItemID.IsValid(want.item) {
         want.entry.item = want.item;
       }
+    }
+    let style = this.m_plan.armStyle;
+    if IsDefined(style) && IsDefined(style.entry) && !style.missing && ItemID.IsValid(style.style.item) {
+      style.entry.item = style.style.item;
     }
   }
 

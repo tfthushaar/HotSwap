@@ -34,6 +34,13 @@ public class HotswapHotkeyWant {
   public let item: ItemID;
 }
 
+// The Glamdoc look a build wants on V's arms (2.5 only).
+public class HotswapArmStyleWant {
+  public let entry: wref<HotswapEntry>;
+  public let style: ref<HotswapArmStyle>;
+  public let missing: Bool;     // the build's style item is gone from V's inventory
+}
+
 public class HotswapPlan {
   public let build: Int32;
   public let name: String;
@@ -44,6 +51,7 @@ public class HotswapPlan {
   public let perkTargets: array<ref<HotswapPerkWant>>;        // every perk the build has, with levels
   public let attributeTargets: array<ref<HotswapAttributeWant>>;  // all five attributes
   public let hotkeys: array<ref<HotswapHotkeyWant>>;
+  public let armStyle: ref<HotswapArmStyleWant>;              // null: the build leaves the style alone
   public let missing: array<String>;
   public let refusal: String;
   public let free: Bool;                                      // no cooldown and no fee
@@ -52,6 +60,7 @@ public class HotswapPlan {
   public let changedParts: Int32;
   public let changedWeapons: Int32;
   public let changedQuick: Int32;
+  public let changedStyle: Bool;
   public let capacityUsed: Float;
   public let capacityTotal: Float;
   public let sparePerkPoints: Int32;
@@ -68,6 +77,7 @@ public class HotswapPlan {
       && this.changedParts == 0
       && this.changedWeapons == 0
       && this.changedQuick == 0
+      && !this.changedStyle
       && ArraySize(this.missing) == 0;
   }
 
@@ -148,6 +158,9 @@ public abstract class HotswapPlanner {
       }
       if row.kind == HotswapKindHotkey() {
         HotswapPlanner.AddHotkey(ctx, plan, row);
+      }
+      if row.kind == HotswapKindArmStyle() {
+        HotswapPlanner.AddArmStyle(ctx, plan, bag, row);
       }
     }
     HotswapPlanner.AddPerks(ctx, plan, rows);
@@ -253,6 +266,51 @@ public abstract class HotswapPlanner {
     if ctx.ts.HasItem(ctx.player, row.item) {
       ArrayPush(plan.hotkeys, want);
     }
+  }
+
+  // A style item is an ordinary item in V's inventory, so it is found the way gear is.
+  private static func AddArmStyle(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, bag: ref<HotswapBag>, row: ref<HotswapEntry>) -> Void {
+    if !HotswapPatch.HasArmStyles() {
+      return;
+    }
+    let want = new HotswapArmStyleWant();
+    want.entry = row;
+    let style = new HotswapArmStyle();
+    if ItemID.IsValid(row.item) {
+      style.item = HotswapPlanner.ResolveShared(ctx, bag, row.item);
+      style.enabled = row.spare == 1;
+      style.primary = row.value % 256;
+      style.secondary = row.value / 256;
+      if !ItemID.IsValid(style.item) {
+        want.missing = true;
+        ArrayPush(plan.missing, HotswapGear.DisplayName(ctx, row.item));
+      }
+    }
+    want.style = style;
+    plan.armStyle = want;
+  }
+
+  // The arms V will have once the build is on: the build's own, or V's if it says nothing about them.
+  public static func ArmsAfter(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> ItemID {
+    let arms = plan.WantAt(gamedataEquipmentArea.ArmsCW, 0);
+    if IsDefined(arms) && !arms.missing {
+      return arms.item;
+    }
+    return HotswapGear.Raw(ctx, gamedataEquipmentArea.ArmsCW, 0);
+  }
+
+  // Whether the swap has a look to put on or take off. A style that doesn't fit the arms the build
+  // ends with can't go on, so it is no change: the Glamdoc wouldn't let it on those arms either.
+  public static func ArmStyleChanges(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>) -> Bool {
+    let want = plan.armStyle;
+    if !IsDefined(want) || want.missing {
+      return false;
+    }
+    if ItemID.IsValid(want.style.item) && !HotswapPatch.StyleFits(ctx, want.style.item, HotswapPlanner.ArmsAfter(ctx, plan)) {
+      return false;
+    }
+    let now = HotswapPatch.ReadArmStyle(ctx);
+    return IsDefined(now) && !HotswapPatch.SameArmStyle(now, want.style);
   }
 
   private static func AddPerks(ctx: ref<HotswapContext>, plan: ref<HotswapPlan>, rows: array<ref<HotswapEntry>>) -> Void {
@@ -399,6 +457,7 @@ public abstract class HotswapPlanner {
     }
     plan.capacityUsed = used;
     plan.capacityTotal = total;
+    plan.changedStyle = HotswapPlanner.ArmStyleChanges(ctx, plan);
     for part in plan.parts {
       if !part.missing && !HotswapPlanner.PartIsOn(ctx, plan, part) {
         plan.changedParts += 1;

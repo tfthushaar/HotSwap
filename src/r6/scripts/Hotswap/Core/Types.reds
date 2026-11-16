@@ -24,6 +24,10 @@ public func HotswapKindPart() -> Int32 = 1       // host and attach: where, item
 public func HotswapKindPerk() -> Int32 = 2       // key: perk, value: level
 public func HotswapKindAttribute() -> Int32 = 3  // key: stat, value: attribute level
 public func HotswapKindHotkey() -> Int32 = 4     // key: hotkey, item: what it is bound to
+// The Glamdoc look on V's arms (2.5 only). item: the style, or none for plain arms. value: the
+// primary colour index plus 256 times the secondary. spare: 1 when the look is on. A build without
+// this row leaves the arm style alone, as builds saved before it existed always did.
+public func HotswapKindArmStyle() -> Int32 = 5
 
 public class HotswapEntry {
   public persistent let build: Int32;

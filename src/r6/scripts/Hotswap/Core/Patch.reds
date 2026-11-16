@@ -101,59 +101,212 @@ public abstract class HotswapPatch {
   }
 
   // ---- Arm styles (2.5) --------------------------------------------------------------------------
+  //
+  // The Glamdoc gives V one look for arm cyberware at a time. It is two things: a style item from
+  // V's inventory (a cosmetic such as MilitechStrongArmsCosmetic) in the ArmsCWStyle slot, and what
+  // CyberwareCustomizationSystem has saved: whether the look is on, the style's switcher name and
+  // index, and two colour indexes into the style's brand palette. The Glamdoc changes both together:
+  // an EquipRequest or UnequipRequest for the slot, and a SaveAndApplyCyberwareCustomizationData
+  // request for the rest (glamdoc.script, SendLatestToCyberwareCustomization and
+  // UnequipCyberwareCustomization). Hotswap does the same, in the same two halves.
 
   // The equipment area that holds the Glamdoc style of V's arm cyberware. Invalid on 2.31.
   public static func ArmStyleArea() -> gamedataEquipmentArea {
     return HotswapNames.ToArea(n"ArmsCWStyle");
   }
 
-  // Switches the arm style off the way the Glamdoc does: a SaveAndApplyCyberwareCustomizationData
-  // request with enabled false, switcher index 0, and the switcher name the system has saved, since
-  // the request's name is what the system saves next. Does nothing on 2.31.
-  //
-  // The request is made by Reflection and handed over by Reflection too. Codeware returns a new
-  // object typed as ISerializable, which redscript can't cast to a request, but the call checks the
-  // object's real class, and that is the request the system expects.
+  public static func HasArmStyles() -> Bool {
+    return NotEquals(HotswapPatch.ArmStyleArea(), gamedataEquipmentArea.Invalid);
+  }
+
+  // V's arm style now: the style item in its slot, and the colours and switch the system has saved.
+  // Null on 2.31, or if the saved data can't be read, which a build then takes as "leave it alone".
+  public static func ReadArmStyle(ctx: ref<HotswapContext>) -> ref<HotswapArmStyle> {
+    let area = HotswapPatch.ArmStyleArea();
+    if Equals(area, gamedataEquipmentArea.Invalid) {
+      return null;
+    }
+    let saved = HotswapPatch.SavedArmStyle(ctx.game);
+    let savedType = Reflection.GetClass(n"CyberwareCustomizationPersistentData");
+    if !IsDefined(saved) || !IsDefined(savedType) {
+      return null;
+    }
+    let enabled = savedType.GetProperty(n"enabled");
+    let primary = savedType.GetProperty(n"primaryColorIndex");
+    let secondary = savedType.GetProperty(n"secondaryColorIndex");
+    if !IsDefined(enabled) || !IsDefined(primary) || !IsDefined(secondary) {
+      return null;
+    }
+    let style = new HotswapArmStyle();
+    style.item = HotswapGear.Raw(ctx, area, 0);
+    // With no style on, the colours left in the saved data mean nothing, so they aren't kept.
+    if ItemID.IsValid(style.item) {
+      style.enabled = FromVariant<Bool>(enabled.GetValue(saved));
+      style.primary = Cast<Int32>(FromVariant<Uint8>(primary.GetValue(saved)));
+      style.secondary = Cast<Int32>(FromVariant<Uint8>(secondary.GetValue(saved)));
+    }
+    return style;
+  }
+
+  // The Glamdoc's own rule for which arms a style is for (ItemTagToIndex and CheckIfCanApply): the
+  // style's first tag of ProjectileLauncher, MantisBlades, NanoWires and StrongArms, against the
+  // arms' item type.
+  public static func StyleFits(ctx: ref<HotswapContext>, style: ItemID, arms: ItemID) -> Bool {
+    let data = ctx.ItemData(style);
+    if !IsDefined(data) || !ItemID.IsValid(arms) {
+      return false;
+    }
+    let tag: CName;
+    if data.HasTag(n"ProjectileLauncher") {
+      tag = n"ProjectileLauncher";
+    } else {
+      if data.HasTag(n"MantisBlades") {
+        tag = n"MantisBlades";
+      } else {
+        if data.HasTag(n"NanoWires") {
+          tag = n"NanoWires";
+        } else {
+          if data.HasTag(n"StrongArms") {
+            tag = n"StrongArms";
+          } else {
+            return false;
+          }
+        }
+      }
+    }
+    switch RPGManager.GetItemType(arms) {
+      case gamedataItemType.Cyb_Launcher:
+        return Equals(tag, n"ProjectileLauncher");
+      case gamedataItemType.Cyb_MantisBlades:
+        return Equals(tag, n"MantisBlades");
+      case gamedataItemType.Cyb_NanoWires:
+        return Equals(tag, n"NanoWires");
+      case gamedataItemType.Cyb_StrongArms:
+        return Equals(tag, n"StrongArms");
+      default:
+        return false;
+    }
+  }
+
+  // Sends the look half of a style, as the Glamdoc does when it applies one
+  // (SendLatestToCyberwareCustomization): the style item, the arms its record is for, its look for
+  // long sleeves when V wears them and its usual look otherwise, and the colours. The style item goes
+  // in its slot separately, with an EquipRequest, as the Glamdoc does too.
+  public static func ApplyArmStyle(ctx: ref<HotswapContext>, style: ref<HotswapArmStyle>) -> Bool {
+    let data: ref<gameItemData> = ctx.ItemData(style.item);
+    // A style's record is a UIGlamdocCustomizationItem_Record, which extends Item_Record, so the item
+    // lookup returns it, and its real class has the Glamdoc fields (CallRecord).
+    let record: ref<TweakDBRecord> = TweakDBInterface.GetItemRecord(ItemID.GetTDBID(style.item));
+    if !IsDefined(data) || !IsDefined(record) {
+      return false;
+    }
+    let armType = HotswapPatch.CallRecord(record, n"CyberarmType");
+    let usualLook = HotswapPatch.CallRecord(record, n"CustomizationIndex");
+    let sleevesLook = HotswapPatch.CallRecord(record, n"LongSleevesCustomizationIndex");
+    if !IsDefined(armType) || !IsDefined(usualLook) || !IsDefined(sleevesLook) {
+      HSLog("The arm style's record couldn't be read, so the arm style stays as it is");
+      return false;
+    }
+    let switcherName = FromVariant<CName>(armType);
+    let usual = FromVariant<Int32>(usualLook);
+    let sleeves = FromVariant<Int32>(sleevesLook);
+    let index = sleeves != -1 && HotswapPatch.HasLongSleeves(ctx) ? sleeves : usual;
+    if Equals(switcherName, n"") || index < 0 {
+      HSLog("The arm style's record has no arm type or look, so the arm style stays as it is");
+      return false;
+    }
+    let enabled = style.enabled;
+    let switcherIndex: Uint32 = Cast<Uint32>(index);
+    let primary: Uint8 = Cast<Uint8>(style.primary);
+    let secondary: Uint8 = Cast<Uint8>(style.secondary);
+    let values: array<CName> = [n"enabled", n"customizationItem", n"switcherName", n"switcherIndex", n"primaryColorIndex", n"secondaryColorIndex"];
+    let settings: array<Variant>;
+    ArrayPush(settings, ToVariant(enabled));
+    ArrayPush(settings, ToVariant(data));
+    ArrayPush(settings, ToVariant(switcherName));
+    ArrayPush(settings, ToVariant(switcherIndex));
+    ArrayPush(settings, ToVariant(primary));
+    ArrayPush(settings, ToVariant(secondary));
+    return HotswapPatch.SendArmStyle(ctx.game, values, settings);
+  }
+
+  // Switches the arm style off the way the Glamdoc and the ripperdoc do (UnequipCyberwareCustomization,
+  // UnequipCyberwareStyle): enabled false, switcher index 0, and the switcher name the system has
+  // saved, since the request's name is what the system saves next. Does nothing on 2.31.
   public static func SwitchOffArmStyle(game: GameInstance) -> Void {
+    let saved = HotswapPatch.SavedArmStyle(game);
+    let savedType = Reflection.GetClass(n"CyberwareCustomizationPersistentData");
+    if !IsDefined(saved) || !IsDefined(savedType) {
+      return;
+    }
+    let savedName = savedType.GetProperty(n"switcherName");
+    if !IsDefined(savedName) {
+      return;
+    }
+    let off = false;
+    let name: CName = FromVariant<CName>(savedName.GetValue(saved));
+    let first: Uint32 = 0u;
+    let values: array<CName> = [n"enabled", n"switcherName", n"switcherIndex"];
+    let settings: array<Variant>;
+    ArrayPush(settings, ToVariant(off));
+    ArrayPush(settings, ToVariant(name));
+    ArrayPush(settings, ToVariant(first));
+    HotswapPatch.SendArmStyle(game, values, settings);
+  }
+
+  // CyberwareCustomizationSystem.GetSavedData, as a Variant holding the struct. Empty on 2.31.
+  private static func SavedArmStyle(game: GameInstance) -> Variant {
+    let empty: Variant;
     let system = GameInstance.GetScriptableSystemsContainer(game).Get(n"CyberwareCustomizationSystem");
     let systemType = Reflection.GetClass(n"CyberwareCustomizationSystem");
-    let savedType = Reflection.GetClass(n"CyberwareCustomizationPersistentData");
-    let requestType = Reflection.GetClass(n"SaveAndApplyCyberwareCustomizationDataRequest");
-    if !IsDefined(system) || !IsDefined(systemType) || !IsDefined(savedType) || !IsDefined(requestType) {
-      return;
+    if !IsDefined(system) || !IsDefined(systemType) {
+      return empty;
     }
     let getSaved = systemType.GetFunction(n"GetSavedData");
-    let queue = systemType.GetFunction(n"QueueRequest");
-    let savedName = savedType.GetProperty(n"switcherName");
-    let enabled = requestType.GetProperty(n"enabled");
-    let switcherName = requestType.GetProperty(n"switcherName");
-    let switcherIndex = requestType.GetProperty(n"switcherIndex");
-    if !IsDefined(getSaved) || !IsDefined(queue) || !IsDefined(savedName) || !IsDefined(enabled)
-      || !IsDefined(switcherName) || !IsDefined(switcherIndex) {
-      HSLog("Couldn't find the game's arm style request, so the arm style stays as it is");
-      return;
+    if !IsDefined(getSaved) {
+      return empty;
     }
-
     let noArgs: array<Variant>;
     let read = false;
     let saved = getSaved.Call(system, noArgs, read);
     if !read {
-      HSLog("Couldn't read the saved arm style, so the arm style stays as it is");
-      return;
+      HSLog("Couldn't read the saved arm style");
+      return empty;
     }
-    let name: CName = FromVariant<CName>(savedName.GetValue(saved));
+    return saved;
+  }
 
+  // Makes a SaveAndApplyCyberwareCustomizationDataRequest with the given fields set, the others left
+  // as a new request has them, and queues it on the system. A field not set is what `new` gives it,
+  // the same as the game's own requests that don't mention it.
+  //
+  // The request is made by Reflection and handed over by Reflection too. Codeware returns a new
+  // object typed as ISerializable, which redscript can't cast to a request, but the call checks the
+  // object's real class, and that is the request the system expects.
+  private static func SendArmStyle(game: GameInstance, values: array<CName>, settings: array<Variant>) -> Bool {
+    let system = GameInstance.GetScriptableSystemsContainer(game).Get(n"CyberwareCustomizationSystem");
+    let systemType = Reflection.GetClass(n"CyberwareCustomizationSystem");
+    let requestType = Reflection.GetClass(n"SaveAndApplyCyberwareCustomizationDataRequest");
+    if !IsDefined(system) || !IsDefined(systemType) || !IsDefined(requestType) {
+      return false;
+    }
+    let queue = systemType.GetFunction(n"QueueRequest");
     let request = requestType.MakeHandle();
-    if !IsDefined(request) {
-      return;
+    if !IsDefined(queue) || !IsDefined(request) {
+      HSLog("Couldn't find the game's arm style request, so the arm style stays as it is");
+      return false;
     }
     let target = ToVariant(request);
-    let off = false;
-    let first: Uint32 = 0u;
-    enabled.SetValue(target, ToVariant(off));
-    switcherName.SetValue(target, ToVariant(name));
-    switcherIndex.SetValue(target, ToVariant(first));
-
+    let i = 0;
+    while i < ArraySize(values) {
+      let field = requestType.GetProperty(values[i]);
+      if !IsDefined(field) {
+        HSLog(s"The arm style request has no \(NameToString(values[i])), so the arm style stays as it is");
+        return false;
+      }
+      field.SetValue(target, settings[i]);
+      i += 1;
+    }
     let args: array<Variant>;
     ArrayPush(args, target);
     let sent = false;
@@ -161,5 +314,61 @@ public abstract class HotswapPatch {
     if !sent {
       HSLog("Couldn't hand the arm style request to the game, so the arm style stays as it is");
     }
+    return sent;
   }
+
+  // Calls a no-argument function of a TweakDB record on its real class, for record types 2.31 lacks.
+  private static func CallRecord(record: ref<TweakDBRecord>, name: CName) -> Variant {
+    let empty: Variant;
+    let type = Reflection.GetClassOf(ToVariant(record), true);
+    if !IsDefined(type) {
+      return empty;
+    }
+    let function = type.GetFunction(name);
+    if !IsDefined(function) {
+      return empty;
+    }
+    let noArgs: array<Variant>;
+    let ok = false;
+    let result = function.Call(record, noArgs, ok);
+    return ok ? result : empty;
+  }
+
+  // The game's own EquipmentSystemPlayerData.HasLongSleeves: a LongSleeve or BodySuit tag on what V
+  // wears over the torso, chest or as an outfit.
+  private static func HasLongSleeves(ctx: ref<HotswapContext>) -> Bool {
+    let owner = Reflection.GetClass(n"EquipmentSystemPlayerData");
+    if !IsDefined(owner) {
+      return false;
+    }
+    let check = owner.GetStaticFunction(n"HasLongSleeves");
+    if !IsDefined(check) {
+      return false;
+    }
+    let puppet: wref<ScriptedPuppet> = ctx.player;
+    let args: array<Variant>;
+    ArrayPush(args, ToVariant(puppet));
+    let ok = false;
+    let result = check.Call(args, ok);
+    return ok && FromVariant<Bool>(result);
+  }
+
+  public static func SameArmStyle(a: ref<HotswapArmStyle>, b: ref<HotswapArmStyle>) -> Bool {
+    if !IsDefined(a) || !IsDefined(b) {
+      return !IsDefined(a) && !IsDefined(b);
+    }
+    if ItemID.GetTDBID(a.item) != ItemID.GetTDBID(b.item) {
+      return false;
+    }
+    return !ItemID.IsValid(a.item)
+      || (Equals(a.enabled, b.enabled) && a.primary == b.primary && a.secondary == b.secondary);
+  }
+}
+
+// One arm look from the Glamdoc. An invalid item means plain arms, with no style.
+public class HotswapArmStyle {
+  public let item: ItemID;
+  public let enabled: Bool;
+  public let primary: Int32;
+  public let secondary: Int32;
 }

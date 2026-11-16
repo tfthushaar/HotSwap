@@ -5,6 +5,7 @@ public abstract class HotswapCapture {
   public static func Into(ctx: ref<HotswapContext>, sys: ref<HotswapSystem>, build: Int32) -> Void {
     sys.ClearEntries(build);
     HotswapCapture.Gear(ctx, sys, build);
+    HotswapCapture.ArmStyle(ctx, sys, build);
     HotswapCapture.Hotkey(ctx, sys, build, EHotkey.RB, n"RB");
     HotswapCapture.Hotkey(ctx, sys, build, EHotkey.DPAD_UP, n"DPAD_UP");
     HotswapCapture.Perks(ctx, sys, build);
@@ -40,6 +41,15 @@ public abstract class HotswapCapture {
       if Equals(slot.status, ESlotState.Taken) && HotswapGear.IsTrackedPart(live, slot.slotID, slot.innerItemData) {
         sys.AddPart(build, named, slot.slotID, slot.installedPart);
       }
+    }
+  }
+
+  // The Glamdoc look on V's arms, plain arms included, so switching back to this build brings it
+  // back. Nothing on 2.31, which has no Glamdoc, or if the look can't be read.
+  private static func ArmStyle(ctx: ref<HotswapContext>, sys: ref<HotswapSystem>, build: Int32) -> Void {
+    let style = HotswapPatch.ReadArmStyle(ctx);
+    if IsDefined(style) {
+      sys.AddArmStyle(build, style);
     }
   }
 

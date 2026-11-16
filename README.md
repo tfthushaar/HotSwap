@@ -2,8 +2,8 @@
 
 Hotswap keeps up to five complete builds for V in Cyberpunk 2077 and switches between them from the
 inventory in one click. A build covers cyberware, quickhacks, weapons, weapon mods, quick items, perks
-and attributes. You can go from a quiet netrunner to a melee bruiser without visiting a ripperdoc or
-respeccing by hand.
+and attributes, and on 2.5 the Glamdoc style on V's arms. You can go from a quiet netrunner to a
+melee bruiser without visiting a ripperdoc or respeccing by hand.
 
 If you'd rather not plan a build yourself, each slot can suggest five builds made from the gear V
 already owns.
@@ -145,10 +145,13 @@ default.
 Hotswap has been checked for conflicts with Equipment-EX and Cyberware-EX. If a perk overhaul renames
 perks, any perk a saved build can't find is skipped and listed before you switch.
 
-Dual wielding and Glamdoc arm styles came with 2.5. On 2.5, a build keeps V's left-hand weapons and
-switching to different arms clears a style that no longer fits them. Recommended builds leave the
-left hand empty and don't buy the dual wielding perks. On 2.31 none of this comes up, and everything
-else works the same on both patches.
+Dual wielding and Glamdoc arm styles came with 2.5. On 2.5, a build keeps V's left-hand weapons, and
+the Glamdoc style V's arms had when you saved it, colours included, or plain arms if they had none.
+Switching to the build puts that style back on, as long as V still owns it. A style only goes on the
+kind of arms it was made for, and switching to a different kind of arms takes off a style that no
+longer fits. Builds saved with Hotswap 1.1.0 or earlier, and recommended builds, leave the style as
+it is. Recommended builds also leave the left hand empty and don't buy the dual wielding perks. On
+2.31 none of this comes up, and everything else works the same on both patches.
 
 ## Reporting a bug
 

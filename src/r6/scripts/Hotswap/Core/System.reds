@@ -139,6 +139,17 @@ public class HotswapSystem extends ScriptableSystem {
     ArrayPush(this.m_entries, entry);
   }
 
+  public func AddArmStyle(build: Int32, style: ref<HotswapArmStyle>) -> Void {
+    let entry = new HotswapEntry();
+    entry.build = build;
+    entry.kind = HotswapKindArmStyle();
+    entry.key = n"ArmStyle";
+    entry.item = style.item;
+    entry.value = style.primary + style.secondary * 256;
+    entry.spare = style.enabled ? 1 : 0;
+    ArrayPush(this.m_entries, entry);
+  }
+
   private func Mark(index: Int32, name: String, origin: Int32) -> Void {
     let header = this.Header(index);
     if IsDefined(header) {

@@ -113,7 +113,8 @@ public abstract class HotswapNames {
     }
   }
 
-  // Clothes are left out on purpose. Arm style, fists and quest slots belong to the game.
+  // Clothes are left out on purpose. Fists and quest slots belong to the game. The arm style has a
+  // row of its own (HotswapKindArmStyle), since a Glamdoc look is more than what sits in its slot.
   public static func IsBuildArea(area: gamedataEquipmentArea) -> Bool {
     return HotswapNames.IsCyberwareArea(area)
       || HotswapNames.IsQuickArea(area)
